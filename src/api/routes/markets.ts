@@ -10,6 +10,7 @@ import { Market, MarketStatus, OutcomeToken } from '../../types.js';
 import { MatchingEngine } from '../../engine/matcher/MatchingEngine.js';
 import { OracleEngine } from '../../oracle/OracleEngine.js';
 import { getMarketSeeder } from '../../oracle/MarketSeeder.js';
+import { getLiveNewsMarkets } from './liveNews.js';
 import { EventBus } from '../../events/EventBus.js';
 
 // In-memory store (production would use PostgreSQL)
@@ -124,13 +125,23 @@ export function createMarketRoutes(engine: MatchingEngine, oracle: OracleEngine,
           category?: string;
           limit?: string;
           offset?: string;
+          source?: string;
         };
       }>,
       reply: FastifyReply
     ) => {
-      const { status, category, limit = '50', offset = '0' } = request.query;
+      const { status, category, limit = '50', offset = '0', source } = request.query;
 
-      let result = Array.from(markets.values());
+      // Combine seeded markets + live news markets
+      const liveMarkets = getLiveNewsMarkets();
+      let result = [...Array.from(markets.values()), ...liveMarkets];
+      
+      // Filter by source if specified
+      if (source === 'live') {
+        result = liveMarkets;
+      } else if (source === 'seeded') {
+        result = Array.from(markets.values());
+      }
 
       // Filter by status
       if (status) {

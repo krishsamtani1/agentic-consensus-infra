@@ -9,23 +9,43 @@ import { EventBus } from '../../events/EventBus.js';
 import { v4 as uuidv4 } from 'uuid';
 import { Market, MarketStatus, HttpJsonResolutionSchema } from '../../types.js';
 
+// Shared state for auto-generated markets (accessible across modules)
+export const liveNewsMarkets: Market[] = [];
+let fetcherInstance: LiveNewsFetcher | null = null;
+
+export function getLiveNewsMarkets(): Market[] {
+  return liveNewsMarkets;
+}
+
+export function getLiveNewsFetcher(): LiveNewsFetcher | null {
+  return fetcherInstance;
+}
+
 export function createLiveNewsRoutes(eventBus: EventBus) {
   // Create live news fetcher
   const liveNewsFetcher = new LiveNewsFetcher(eventBus);
-
-  // Auto-generated markets from headlines
-  const autoMarkets: Market[] = [];
+  fetcherInstance = liveNewsFetcher;
 
   // Subscribe to new headlines and auto-generate markets
+  // Lower threshold to 0.5 to capture more headlines (RSS feeds are curated)
   eventBus.subscribe('headlines.new', (headline: any) => {
-    if (headline.impact_score >= 0.7) {
+    if (headline.impact_score >= 0.5) {
       const market = generateMarketFromHeadline(headline);
       if (market) {
-        autoMarkets.unshift(market);
-        if (autoMarkets.length > 50) autoMarkets.pop();
+        liveNewsMarkets.unshift(market);
+        if (liveNewsMarkets.length > 100) liveNewsMarkets.pop();
         eventBus.publish('markets.auto_created', { market, headline });
+        console.log(`[LiveNews] Created market: ${market.ticker} - ${market.title.slice(0, 50)}...`);
       }
     }
+  });
+
+  // AUTO-START: Begin fetching immediately when routes are registered
+  console.log('[LiveNews] Auto-starting news fetcher...');
+  liveNewsFetcher.start().then(() => {
+    console.log('[LiveNews] Fetcher started successfully');
+  }).catch(err => {
+    console.error('[LiveNews] Failed to start fetcher:', err);
   });
 
   return async function liveNewsRoutes(fastify: FastifyInstance): Promise<void> {
@@ -80,8 +100,8 @@ export function createLiveNewsRoutes(eventBus: EventBus) {
       return reply.send({
         success: true,
         data: {
-          markets: autoMarkets,
-          total: autoMarkets.length,
+          markets: liveNewsMarkets,
+          total: liveNewsMarkets.length,
         },
         timestamp: new Date().toISOString(),
       });
@@ -172,11 +192,17 @@ function generateMarketFromHeadline(headline: any): Market | null {
     condition: { operator: 'eq', value: true },
   };
 
+  // Simulate realistic initial volume based on impact score
+  const baseVolume = Math.floor(10000 + headline.impact_score * 50000);
+  const yesRatio = 0.35 + Math.random() * 0.3; // 35-65% initial YES
+  const volumeYes = Math.floor(baseVolume * yesRatio);
+  const volumeNo = Math.floor(baseVolume * (1 - yesRatio));
+
   return {
     id: uuidv4(),
     ticker,
     title: question,
-    description: `${headline.summary}\n\nSource: ${headline.source}\nOriginal: ${headline.title}`,
+    description: `**${headline.title}**\n\n${headline.summary || 'No summary available.'}\n\n**Source:** ${headline.source}\n**Category:** ${headline.category}`,
     resolution_schema: resolutionSchema,
     opens_at: now,
     closes_at: closesAt,
@@ -185,9 +211,11 @@ function generateMarketFromHeadline(headline: any): Market | null {
     min_order_size: 1,
     max_position: 10000,
     fee_rate: 0.002,
-    volume_yes: 0,
-    volume_no: 0,
-    open_interest: 0,
+    volume_yes: volumeYes,
+    volume_no: volumeNo,
+    open_interest: Math.floor((volumeYes + volumeNo) * 0.25),
+    last_price_yes: yesRatio,
+    last_price_no: 1 - yesRatio,
     category: headline.category,
     tags: headline.tags || [],
     metadata: {
@@ -196,6 +224,7 @@ function generateMarketFromHeadline(headline: any): Market | null {
       source_url: headline.source_url,
       impact_score: headline.impact_score,
       auto_generated: true,
+      live_sourced: true,
       fetched_at: headline.fetched_at,
     },
     created_at: now,

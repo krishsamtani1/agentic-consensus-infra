@@ -56,7 +56,9 @@ export interface LiveNewsFetcherConfig {
 // ============================================================================
 
 const DEFAULT_RSS_FEEDS: RSSFeedConfig[] = [
-  // Logistics & Shipping
+  // =========================================================================
+  // LOGISTICS & SHIPPING (High value for prediction markets)
+  // =========================================================================
   {
     url: 'https://www.freightwaves.com/feed',
     name: 'FreightWaves',
@@ -75,8 +77,16 @@ const DEFAULT_RSS_FEEDS: RSSFeedConfig[] = [
     category: 'logistics',
     keywords: ['supply chain', 'logistics', 'warehouse'],
   },
+  {
+    url: 'https://www.joc.com/rss/all',
+    name: 'Journal of Commerce',
+    category: 'logistics',
+    keywords: ['shipping', 'trade', 'port', 'freight'],
+  },
 
-  // Tech & Earnings
+  // =========================================================================
+  // TECH & AI (Hot topic for markets)
+  // =========================================================================
   {
     url: 'https://techcrunch.com/feed/',
     name: 'TechCrunch',
@@ -95,16 +105,44 @@ const DEFAULT_RSS_FEEDS: RSSFeedConfig[] = [
     category: 'tech-earnings',
     keywords: ['tech', 'AI', 'gadgets'],
   },
+  {
+    url: 'https://www.wired.com/feed/rss',
+    name: 'Wired',
+    category: 'tech-earnings',
+    keywords: ['tech', 'AI', 'science'],
+  },
+  {
+    url: 'https://venturebeat.com/feed/',
+    name: 'VentureBeat',
+    category: 'tech-earnings',
+    keywords: ['AI', 'startup', 'enterprise'],
+  },
 
-  // Weather
+  // =========================================================================
+  // WEATHER & CLIMATE
+  // =========================================================================
   {
     url: 'https://www.nhc.noaa.gov/index-at.xml',
-    name: 'NOAA Hurricane Center',
+    name: 'NOAA Atlantic',
     category: 'weather',
     keywords: ['hurricane', 'storm', 'tropical'],
   },
+  {
+    url: 'https://www.nhc.noaa.gov/index-ep.xml',
+    name: 'NOAA Pacific',
+    category: 'weather',
+    keywords: ['hurricane', 'typhoon', 'storm'],
+  },
+  {
+    url: 'https://www.spc.noaa.gov/products/spcwwrss.xml',
+    name: 'NOAA Severe Weather',
+    category: 'weather',
+    keywords: ['tornado', 'severe', 'warning'],
+  },
 
-  // Geopolitics
+  // =========================================================================
+  // GEOPOLITICS & WORLD NEWS
+  // =========================================================================
   {
     url: 'https://feeds.reuters.com/Reuters/worldNews',
     name: 'Reuters World',
@@ -117,8 +155,22 @@ const DEFAULT_RSS_FEEDS: RSSFeedConfig[] = [
     category: 'geopolitics',
     keywords: ['international', 'diplomacy', 'conflict'],
   },
+  {
+    url: 'https://feeds.bbci.co.uk/news/world/rss.xml',
+    name: 'BBC World',
+    category: 'geopolitics',
+    keywords: ['world', 'politics', 'conflict'],
+  },
+  {
+    url: 'https://www.aljazeera.com/xml/rss/all.xml',
+    name: 'Al Jazeera',
+    category: 'geopolitics',
+    keywords: ['middle east', 'conflict', 'politics'],
+  },
 
-  // Niche Internet
+  // =========================================================================
+  // NICHE INTERNET & VIRAL
+  // =========================================================================
   {
     url: 'https://hnrss.org/frontpage',
     name: 'Hacker News',
@@ -127,9 +179,21 @@ const DEFAULT_RSS_FEEDS: RSSFeedConfig[] = [
   },
   {
     url: 'https://www.reddit.com/r/technology/.rss',
-    name: 'Reddit Technology',
+    name: 'Reddit Tech',
     category: 'niche-internet',
     keywords: ['reddit', 'viral', 'trending'],
+  },
+  {
+    url: 'https://www.reddit.com/r/worldnews/.rss',
+    name: 'Reddit WorldNews',
+    category: 'geopolitics',
+    keywords: ['breaking', 'world', 'news'],
+  },
+  {
+    url: 'https://www.reddit.com/r/cryptocurrency/.rss',
+    name: 'Reddit Crypto',
+    category: 'niche-internet',
+    keywords: ['bitcoin', 'crypto', 'ethereum'],
   },
 ];
 
