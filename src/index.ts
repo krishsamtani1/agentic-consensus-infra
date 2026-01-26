@@ -25,6 +25,9 @@ import { createHeadlinesRoutes } from './api/routes/headlines.js';
 import { createNewsRoutes } from './api/routes/news.js';
 import { createLiveNewsRoutes } from './api/routes/liveNews.js';
 import { createHeadlineFactoryRoutes } from './oracle/HeadlineFactory.js';
+import { createDiscoveryRoutes } from './oracle/DiscoveryService.js';
+import { createResolverRoutes } from './oracle/ProductionResolver.js';
+import { createLedgerRoutes } from './persistence/PostgresLedger.js';
 import { washTradingDetector } from './core/CircuitBreaker.js';
 
 import { EscrowLedger } from './engine/escrow/EscrowLedger.js';
@@ -148,6 +151,15 @@ async function registerRoutes() {
 
     // Chaos headline factory (spontaneous market generation)
     await app.register(createHeadlineFactoryRoutes(eventBus));
+
+    // Production discovery service (real news APIs)
+    await app.register(createDiscoveryRoutes(eventBus));
+
+    // Production resolver (automated oracle resolution)
+    await app.register(createResolverRoutes(eventBus));
+
+    // PostgreSQL persistence ledger
+    await app.register(createLedgerRoutes());
 
     // Wash trading status endpoint
     app.get('/wash-trading/status', async () => {

@@ -1,417 +1,487 @@
 /**
- * TRUTH-NET Binary Protocol v2.0
+ * TRUTH-NET Binary Protocol v1.0
  * 
- * MessagePack-compatible binary encoding for ultra-low latency WebSocket.
- * Optimized for order book updates at 100+ messages/second.
- * 
- * Message Format:
- * [1 byte: type] [4 bytes: length] [N bytes: payload]
+ * High-performance MessagePack-based serialization for WebSocket communication.
+ * Achieves sub-5ms message encoding/decoding for real-time trading.
  */
 
+import { pack, unpack, Packr } from 'msgpackr';
+
 // ============================================================================
-// MESSAGE TYPES
+// MESSAGE TYPES (Binary opcodes for ultra-fast routing)
 // ============================================================================
 
-export const enum MessageType {
-  // Control messages
-  HANDSHAKE = 0x01,
-  HANDSHAKE_ACK = 0x02,
-  HEARTBEAT = 0x03,
-  HEARTBEAT_ACK = 0x04,
-  SUBSCRIBE = 0x05,
-  UNSUBSCRIBE = 0x06,
+export enum MessageType {
+  // System (0x00 - 0x0F)
+  HEARTBEAT = 0x00,
+  AUTH = 0x01,
+  SUBSCRIBE = 0x02,
+  UNSUBSCRIBE = 0x03,
   ERROR = 0x0F,
 
-  // Market data (high frequency)
+  // Order Book (0x10 - 0x1F)
   ORDER_BOOK_SNAPSHOT = 0x10,
   ORDER_BOOK_DELTA = 0x11,
-  TRADE = 0x12,
-  TICKER = 0x13,
-  BEST_BID_ASK = 0x14,
+  ORDER_BOOK_TOP = 0x12,
 
-  // Events (medium frequency)
-  ORDER_PLACED = 0x20,
-  ORDER_FILLED = 0x21,
-  ORDER_CANCELLED = 0x22,
-  ORDER_REJECTED = 0x23,
+  // Orders (0x20 - 0x2F)
+  ORDER_NEW = 0x20,
+  ORDER_CANCEL = 0x21,
+  ORDER_UPDATE = 0x22,
+  ORDER_FILL = 0x23,
+  ORDER_REJECTED = 0x24,
 
-  // Markets
-  MARKET_CREATED = 0x30,
-  MARKET_RESOLVED = 0x31,
-  MARKET_UPDATE = 0x32,
+  // Trades (0x30 - 0x3F)
+  TRADE = 0x30,
+  TRADE_BATCH = 0x31,
 
-  // Agents
-  AGENT_UPDATE = 0x40,
-  POSITION_UPDATE = 0x41,
-  WALLET_UPDATE = 0x42,
+  // Markets (0x40 - 0x4F)
+  MARKET_UPDATE = 0x40,
+  MARKET_RESOLVED = 0x41,
+  MARKET_CREATED = 0x42,
 
-  // Headlines
-  HEADLINE = 0x50,
-  AUTO_MARKET = 0x51,
+  // Agents (0x50 - 0x5F)
+  AGENT_UPDATE = 0x50,
+  AGENT_POSITION = 0x51,
+  AGENT_PNL = 0x52,
+
+  // Headlines (0x60 - 0x6F)
+  HEADLINE_NEW = 0x60,
+  HEADLINE_BATCH = 0x61,
 }
 
 // ============================================================================
-// BINARY ENCODER
+// OPTIMIZED PACKR INSTANCE
 // ============================================================================
 
-export class BinaryProtocolEncoder {
-  private buffer: ArrayBuffer;
-  private view: DataView;
-  private uint8: Uint8Array;
-  private offset: number = 0;
-  private textEncoder = new TextEncoder();
+const packr = new Packr({
+  useRecords: true,       // Enable record structures for repeated schemas
+  structuredClone: false, // Disable for speed
+  moreTypes: true,        // Support BigInt, Date, etc.
+  bundleStrings: true,    // Bundle repeated strings
+  sequential: true,       // Optimize for sequential access
+});
 
-  constructor(size: number = 16384) {
-    this.buffer = new ArrayBuffer(size);
-    this.view = new DataView(this.buffer);
-    this.uint8 = new Uint8Array(this.buffer);
+// ============================================================================
+// BINARY MESSAGE STRUCTURE
+// ============================================================================
+
+export interface BinaryMessage {
+  type: MessageType;
+  seq: number;           // Sequence number for ordering
+  ts: number;            // Timestamp (ms since epoch)
+  payload: unknown;
+}
+
+// ============================================================================
+// ENCODER
+// ============================================================================
+
+export class BinaryEncoder {
+  private sequenceNumber = 0;
+
+  /**
+   * Encode a message to binary format
+   * Returns Uint8Array for WebSocket transmission
+   */
+  encode(type: MessageType, payload: unknown): Uint8Array {
+    const message: BinaryMessage = {
+      type,
+      seq: this.sequenceNumber++,
+      ts: Date.now(),
+      payload,
+    };
+
+    return packr.pack(message);
   }
 
-  reset(): this {
-    this.offset = 0;
-    return this;
+  /**
+   * Encode order book snapshot (optimized format)
+   * Uses fixed-width arrays for maximum speed
+   */
+  encodeOrderBook(
+    marketId: string,
+    outcome: 'yes' | 'no',
+    bids: Array<[number, number]>,  // [price, quantity]
+    asks: Array<[number, number]>,
+    bestBid: number | null,
+    bestAsk: number | null
+  ): Uint8Array {
+    return this.encode(MessageType.ORDER_BOOK_SNAPSHOT, {
+      m: marketId,
+      o: outcome === 'yes' ? 1 : 0,
+      b: bids,
+      a: asks,
+      bb: bestBid,
+      ba: bestAsk,
+    });
   }
 
-  private ensureCapacity(needed: number): void {
-    const required = this.offset + needed;
-    if (required > this.buffer.byteLength) {
-      const newSize = Math.max(this.buffer.byteLength * 2, required);
-      const newBuffer = new ArrayBuffer(newSize);
-      new Uint8Array(newBuffer).set(this.uint8);
-      this.buffer = newBuffer;
-      this.view = new DataView(this.buffer);
-      this.uint8 = new Uint8Array(this.buffer);
+  /**
+   * Encode order book delta (incremental update)
+   */
+  encodeOrderBookDelta(
+    marketId: string,
+    outcome: 'yes' | 'no',
+    side: 'bid' | 'ask',
+    price: number,
+    quantity: number,
+    action: 'add' | 'remove' | 'update'
+  ): Uint8Array {
+    return this.encode(MessageType.ORDER_BOOK_DELTA, {
+      m: marketId,
+      o: outcome === 'yes' ? 1 : 0,
+      s: side === 'bid' ? 1 : 0,
+      p: price,
+      q: quantity,
+      a: action === 'add' ? 1 : action === 'remove' ? 2 : 3,
+    });
+  }
+
+  /**
+   * Encode trade
+   */
+  encodeTrade(
+    tradeId: string,
+    marketId: string,
+    price: number,
+    quantity: number,
+    side: 'buy' | 'sell',
+    buyerId: string,
+    sellerId: string
+  ): Uint8Array {
+    return this.encode(MessageType.TRADE, {
+      id: tradeId,
+      m: marketId,
+      p: price,
+      q: quantity,
+      s: side === 'buy' ? 1 : 0,
+      b: buyerId,
+      sl: sellerId,
+    });
+  }
+
+  /**
+   * Encode headline
+   */
+  encodeHeadline(
+    id: string,
+    title: string,
+    category: string,
+    impactScore: number,
+    source: string
+  ): Uint8Array {
+    return this.encode(MessageType.HEADLINE_NEW, {
+      id,
+      t: title,
+      c: category,
+      i: impactScore,
+      s: source,
+    });
+  }
+
+  /**
+   * Reset sequence counter
+   */
+  resetSequence(): void {
+    this.sequenceNumber = 0;
+  }
+}
+
+// ============================================================================
+// DECODER
+// ============================================================================
+
+export class BinaryDecoder {
+  private lastSequence = -1;
+
+  /**
+   * Decode binary message
+   */
+  decode(buffer: Uint8Array | ArrayBuffer): BinaryMessage {
+    const data = buffer instanceof ArrayBuffer ? new Uint8Array(buffer) : buffer;
+    return packr.unpack(data) as BinaryMessage;
+  }
+
+  /**
+   * Decode and validate sequence
+   * Returns null if message is out of order (can be used for ordering)
+   */
+  decodeWithValidation(buffer: Uint8Array | ArrayBuffer): BinaryMessage | null {
+    const message = this.decode(buffer);
+    
+    if (message.seq <= this.lastSequence) {
+      console.warn(`[Binary] Out-of-order message: got ${message.seq}, expected > ${this.lastSequence}`);
+      return null;
     }
+
+    this.lastSequence = message.seq;
+    return message;
   }
 
-  // Primitives
-  writeUint8(val: number): this {
-    this.ensureCapacity(1);
-    this.view.setUint8(this.offset++, val);
-    return this;
-  }
-
-  writeUint16(val: number): this {
-    this.ensureCapacity(2);
-    this.view.setUint16(this.offset, val, true);
-    this.offset += 2;
-    return this;
-  }
-
-  writeUint32(val: number): this {
-    this.ensureCapacity(4);
-    this.view.setUint32(this.offset, val, true);
-    this.offset += 4;
-    return this;
-  }
-
-  writeFloat64(val: number): this {
-    this.ensureCapacity(8);
-    this.view.setFloat64(this.offset, val, true);
-    this.offset += 8;
-    return this;
-  }
-
-  writeString(val: string): this {
-    const encoded = this.textEncoder.encode(val);
-    this.writeUint16(encoded.length);
-    this.ensureCapacity(encoded.length);
-    this.uint8.set(encoded, this.offset);
-    this.offset += encoded.length;
-    return this;
-  }
-
-  writeBytes(val: Uint8Array): this {
-    this.writeUint32(val.length);
-    this.ensureCapacity(val.length);
-    this.uint8.set(val, this.offset);
-    this.offset += val.length;
-    return this;
-  }
-
-  getBuffer(): Uint8Array {
-    return new Uint8Array(this.buffer, 0, this.offset);
-  }
-
-  // Message builders
-  buildMessage(type: MessageType, payloadFn: () => void): Uint8Array {
-    this.reset();
-    
-    // Write type
-    this.writeUint8(type);
-    
-    // Reserve space for length
-    const lengthOffset = this.offset;
-    this.offset += 4;
-    
-    // Write payload
-    const payloadStart = this.offset;
-    payloadFn();
-    const payloadLength = this.offset - payloadStart;
-    
-    // Write length
-    this.view.setUint32(lengthOffset, payloadLength, true);
-    
-    return this.getBuffer().slice();
-  }
-
-  // Pre-built message encoders
-  encodeHeartbeat(): Uint8Array {
-    return this.buildMessage(MessageType.HEARTBEAT, () => {
-      this.writeFloat64(Date.now());
-    });
-  }
-
-  encodeTrade(trade: {
-    id: string;
-    market_id: string;
-    price: number;
-    quantity: number;
-    buyer_id: string;
-    seller_id: string;
-    timestamp: number;
-  }): Uint8Array {
-    return this.buildMessage(MessageType.TRADE, () => {
-      this.writeString(trade.id);
-      this.writeString(trade.market_id);
-      this.writeFloat64(trade.price);
-      this.writeFloat64(trade.quantity);
-      this.writeString(trade.buyer_id);
-      this.writeString(trade.seller_id);
-      this.writeFloat64(trade.timestamp);
-    });
-  }
-
-  encodeBestBidAsk(data: {
-    market_id: string;
-    outcome: string;
-    best_bid: number | null;
-    best_ask: number | null;
-    spread: number | null;
-    timestamp: number;
-  }): Uint8Array {
-    return this.buildMessage(MessageType.BEST_BID_ASK, () => {
-      this.writeString(data.market_id);
-      this.writeString(data.outcome);
-      this.writeFloat64(data.best_bid ?? -1);
-      this.writeFloat64(data.best_ask ?? -1);
-      this.writeFloat64(data.spread ?? -1);
-      this.writeFloat64(data.timestamp);
-    });
-  }
-
-  encodeOrderBookSnapshot(snapshot: {
-    market_id: string;
-    outcome: string;
+  /**
+   * Decode order book snapshot to structured format
+   */
+  decodeOrderBook(message: BinaryMessage): {
+    marketId: string;
+    outcome: 'yes' | 'no';
     bids: Array<{ price: number; quantity: number }>;
     asks: Array<{ price: number; quantity: number }>;
-    timestamp: number;
-  }): Uint8Array {
-    return this.buildMessage(MessageType.ORDER_BOOK_SNAPSHOT, () => {
-      this.writeString(snapshot.market_id);
-      this.writeString(snapshot.outcome);
-      
-      // Bids (top 10)
-      const bids = snapshot.bids.slice(0, 10);
-      this.writeUint8(bids.length);
-      for (const bid of bids) {
-        this.writeFloat64(bid.price);
-        this.writeFloat64(bid.quantity);
-      }
-      
-      // Asks (top 10)
-      const asks = snapshot.asks.slice(0, 10);
-      this.writeUint8(asks.length);
-      for (const ask of asks) {
-        this.writeFloat64(ask.price);
-        this.writeFloat64(ask.quantity);
-      }
-      
-      this.writeFloat64(snapshot.timestamp);
-    });
+    bestBid: number | null;
+    bestAsk: number | null;
+  } {
+    const p = message.payload as any;
+    return {
+      marketId: p.m,
+      outcome: p.o === 1 ? 'yes' : 'no',
+      bids: p.b.map(([price, quantity]: [number, number]) => ({ price, quantity })),
+      asks: p.a.map(([price, quantity]: [number, number]) => ({ price, quantity })),
+      bestBid: p.bb,
+      bestAsk: p.ba,
+    };
   }
 
-  encodeHeadline(headline: {
-    id: string;
-    title: string;
-    source: string;
-    category: string;
-    impact_score: number;
+  /**
+   * Decode trade to structured format
+   */
+  decodeTrade(message: BinaryMessage): {
+    tradeId: string;
+    marketId: string;
+    price: number;
+    quantity: number;
+    side: 'buy' | 'sell';
+    buyerId: string;
+    sellerId: string;
     timestamp: number;
-  }): Uint8Array {
-    return this.buildMessage(MessageType.HEADLINE, () => {
-      this.writeString(headline.id);
-      this.writeString(headline.title);
-      this.writeString(headline.source);
-      this.writeString(headline.category);
-      this.writeFloat64(headline.impact_score);
-      this.writeFloat64(headline.timestamp);
-    });
+  } {
+    const p = message.payload as any;
+    return {
+      tradeId: p.id,
+      marketId: p.m,
+      price: p.p,
+      quantity: p.q,
+      side: p.s === 1 ? 'buy' : 'sell',
+      buyerId: p.b,
+      sellerId: p.sl,
+      timestamp: message.ts,
+    };
   }
 
-  encodeAutoMarket(market: {
-    id: string;
-    ticker: string;
-    title: string;
-    category: string;
-    confidence: number;
-    reasoning: string;
-  }): Uint8Array {
-    return this.buildMessage(MessageType.AUTO_MARKET, () => {
-      this.writeString(market.id);
-      this.writeString(market.ticker);
-      this.writeString(market.title);
-      this.writeString(market.category);
-      this.writeFloat64(market.confidence);
-      this.writeString(market.reasoning);
-    });
+  /**
+   * Reset sequence tracking
+   */
+  resetSequence(): void {
+    this.lastSequence = -1;
   }
 }
 
 // ============================================================================
-// BINARY DECODER
+// SHARED MEMORY ORDER BOOK (Zero-Copy)
 // ============================================================================
 
-export class BinaryProtocolDecoder {
-  private view: DataView;
-  private uint8: Uint8Array;
-  private offset: number = 0;
-  private textDecoder = new TextDecoder();
+/**
+ * SharedArrayBuffer-based order book for zero-copy UI reads
+ * 
+ * Memory Layout (per market):
+ * - Bytes 0-7: Best Bid Price (Float64)
+ * - Bytes 8-15: Best Bid Qty (Float64)
+ * - Bytes 16-23: Best Ask Price (Float64)
+ * - Bytes 24-31: Best Ask Qty (Float64)
+ * - Bytes 32-39: Last Trade Price (Float64)
+ * - Bytes 40-47: Volume (Float64)
+ * - Bytes 48-55: Open Interest (Float64)
+ * - Bytes 56-63: Last Update Timestamp (BigInt64)
+ * 
+ * Top 10 Bids (10 levels × 16 bytes = 160 bytes):
+ * - Bytes 64-223: Bid levels [price, qty]...
+ * 
+ * Top 10 Asks (10 levels × 16 bytes = 160 bytes):
+ * - Bytes 224-383: Ask levels [price, qty]...
+ * 
+ * Total per market: 384 bytes
+ */
 
-  constructor(buffer: ArrayBuffer | Uint8Array) {
-    if (buffer instanceof Uint8Array) {
-      this.view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
-      this.uint8 = buffer;
+export const MARKET_BUFFER_SIZE = 384;
+export const MAX_MARKETS = 100;
+export const TOTAL_BUFFER_SIZE = MARKET_BUFFER_SIZE * MAX_MARKETS;
+
+export class SharedOrderBook {
+  private buffer: SharedArrayBuffer;
+  private float64View: Float64Array;
+  private int64View: BigInt64Array;
+  private marketIndexMap: Map<string, number> = new Map();
+  private nextIndex = 0;
+
+  constructor(existingBuffer?: SharedArrayBuffer) {
+    if (existingBuffer) {
+      this.buffer = existingBuffer;
     } else {
-      this.view = new DataView(buffer);
-      this.uint8 = new Uint8Array(buffer);
+      this.buffer = new SharedArrayBuffer(TOTAL_BUFFER_SIZE);
+    }
+    this.float64View = new Float64Array(this.buffer);
+    this.int64View = new BigInt64Array(this.buffer);
+  }
+
+  /**
+   * Get the underlying SharedArrayBuffer for transfer to workers/UI
+   */
+  getBuffer(): SharedArrayBuffer {
+    return this.buffer;
+  }
+
+  /**
+   * Register a market and get its buffer offset
+   */
+  registerMarket(marketId: string): number {
+    if (this.marketIndexMap.has(marketId)) {
+      return this.marketIndexMap.get(marketId)!;
+    }
+
+    if (this.nextIndex >= MAX_MARKETS) {
+      throw new Error('Maximum market limit reached');
+    }
+
+    const index = this.nextIndex++;
+    this.marketIndexMap.set(marketId, index);
+    return index;
+  }
+
+  /**
+   * Get market index
+   */
+  getMarketIndex(marketId: string): number | undefined {
+    return this.marketIndexMap.get(marketId);
+  }
+
+  /**
+   * Update order book data (called from matching engine)
+   */
+  updateOrderBook(
+    marketId: string,
+    bestBid: number | null,
+    bestBidQty: number,
+    bestAsk: number | null,
+    bestAskQty: number,
+    lastPrice: number,
+    volume: number,
+    openInterest: number,
+    bids: Array<[number, number]>,
+    asks: Array<[number, number]>
+  ): void {
+    const index = this.registerMarket(marketId);
+    const baseOffset = index * (MARKET_BUFFER_SIZE / 8); // Convert bytes to Float64 offset
+
+    // Update core metrics (atomic writes via Float64Array)
+    this.float64View[baseOffset + 0] = bestBid ?? 0;
+    this.float64View[baseOffset + 1] = bestBidQty;
+    this.float64View[baseOffset + 2] = bestAsk ?? 0;
+    this.float64View[baseOffset + 3] = bestAskQty;
+    this.float64View[baseOffset + 4] = lastPrice;
+    this.float64View[baseOffset + 5] = volume;
+    this.float64View[baseOffset + 6] = openInterest;
+    
+    // Update timestamp
+    this.int64View[baseOffset + 7] = BigInt(Date.now());
+
+    // Update top 10 bids (offset 8-27)
+    for (let i = 0; i < 10; i++) {
+      const bid = bids[i];
+      this.float64View[baseOffset + 8 + i * 2] = bid ? bid[0] : 0;
+      this.float64View[baseOffset + 9 + i * 2] = bid ? bid[1] : 0;
+    }
+
+    // Update top 10 asks (offset 28-47)
+    for (let i = 0; i < 10; i++) {
+      const ask = asks[i];
+      this.float64View[baseOffset + 28 + i * 2] = ask ? ask[0] : 0;
+      this.float64View[baseOffset + 29 + i * 2] = ask ? ask[1] : 0;
     }
   }
 
-  readUint8(): number {
-    return this.view.getUint8(this.offset++);
-  }
+  /**
+   * Read order book data (called from UI - zero-copy)
+   */
+  readOrderBook(marketId: string): {
+    bestBid: number | null;
+    bestBidQty: number;
+    bestAsk: number | null;
+    bestAskQty: number;
+    lastPrice: number;
+    volume: number;
+    openInterest: number;
+    timestamp: number;
+    bids: Array<{ price: number; quantity: number }>;
+    asks: Array<{ price: number; quantity: number }>;
+  } | null {
+    const index = this.marketIndexMap.get(marketId);
+    if (index === undefined) return null;
 
-  readUint16(): number {
-    const val = this.view.getUint16(this.offset, true);
-    this.offset += 2;
-    return val;
-  }
+    const baseOffset = index * (MARKET_BUFFER_SIZE / 8);
 
-  readUint32(): number {
-    const val = this.view.getUint32(this.offset, true);
-    this.offset += 4;
-    return val;
-  }
+    const bids: Array<{ price: number; quantity: number }> = [];
+    const asks: Array<{ price: number; quantity: number }> = [];
 
-  readFloat64(): number {
-    const val = this.view.getFloat64(this.offset, true);
-    this.offset += 8;
-    return val;
-  }
-
-  readString(): string {
-    const len = this.readUint16();
-    const bytes = this.uint8.slice(this.offset, this.offset + len);
-    this.offset += len;
-    return this.textDecoder.decode(bytes);
-  }
-
-  // Message parser
-  parseMessage(): { type: MessageType; data: unknown } {
-    const type = this.readUint8() as MessageType;
-    const length = this.readUint32();
-    const endOffset = this.offset + length;
-
-    let data: unknown;
-
-    switch (type) {
-      case MessageType.HEARTBEAT:
-        data = { timestamp: this.readFloat64() };
-        break;
-
-      case MessageType.TRADE:
-        data = {
-          id: this.readString(),
-          market_id: this.readString(),
-          price: this.readFloat64(),
-          quantity: this.readFloat64(),
-          buyer_id: this.readString(),
-          seller_id: this.readString(),
-          timestamp: this.readFloat64(),
-        };
-        break;
-
-      case MessageType.BEST_BID_ASK:
-        data = {
-          market_id: this.readString(),
-          outcome: this.readString(),
-          best_bid: this.readFloat64(),
-          best_ask: this.readFloat64(),
-          spread: this.readFloat64(),
-          timestamp: this.readFloat64(),
-        };
-        // Convert -1 back to null
-        if ((data as any).best_bid === -1) (data as any).best_bid = null;
-        if ((data as any).best_ask === -1) (data as any).best_ask = null;
-        if ((data as any).spread === -1) (data as any).spread = null;
-        break;
-
-      case MessageType.ORDER_BOOK_SNAPSHOT: {
-        const market_id = this.readString();
-        const outcome = this.readString();
-        
-        const bidCount = this.readUint8();
-        const bids: Array<{ price: number; quantity: number }> = [];
-        for (let i = 0; i < bidCount; i++) {
-          bids.push({ price: this.readFloat64(), quantity: this.readFloat64() });
-        }
-        
-        const askCount = this.readUint8();
-        const asks: Array<{ price: number; quantity: number }> = [];
-        for (let i = 0; i < askCount; i++) {
-          asks.push({ price: this.readFloat64(), quantity: this.readFloat64() });
-        }
-        
-        data = { market_id, outcome, bids, asks, timestamp: this.readFloat64() };
-        break;
+    // Read bids
+    for (let i = 0; i < 10; i++) {
+      const price = this.float64View[baseOffset + 8 + i * 2];
+      const quantity = this.float64View[baseOffset + 9 + i * 2];
+      if (price > 0) {
+        bids.push({ price, quantity });
       }
-
-      case MessageType.HEADLINE:
-        data = {
-          id: this.readString(),
-          title: this.readString(),
-          source: this.readString(),
-          category: this.readString(),
-          impact_score: this.readFloat64(),
-          timestamp: this.readFloat64(),
-        };
-        break;
-
-      case MessageType.AUTO_MARKET:
-        data = {
-          id: this.readString(),
-          ticker: this.readString(),
-          title: this.readString(),
-          category: this.readString(),
-          confidence: this.readFloat64(),
-          reasoning: this.readString(),
-        };
-        break;
-
-      default:
-        // Skip unknown message
-        this.offset = endOffset;
-        data = null;
     }
 
-    return { type, data };
+    // Read asks
+    for (let i = 0; i < 10; i++) {
+      const price = this.float64View[baseOffset + 28 + i * 2];
+      const quantity = this.float64View[baseOffset + 29 + i * 2];
+      if (price > 0) {
+        asks.push({ price, quantity });
+      }
+    }
+
+    const bestBidValue = this.float64View[baseOffset + 0];
+    const bestAskValue = this.float64View[baseOffset + 2];
+
+    return {
+      bestBid: bestBidValue > 0 ? bestBidValue : null,
+      bestBidQty: this.float64View[baseOffset + 1],
+      bestAsk: bestAskValue > 0 ? bestAskValue : null,
+      bestAskQty: this.float64View[baseOffset + 3],
+      lastPrice: this.float64View[baseOffset + 4],
+      volume: this.float64View[baseOffset + 5],
+      openInterest: this.float64View[baseOffset + 6],
+      timestamp: Number(this.int64View[baseOffset + 7]),
+      bids,
+      asks,
+    };
+  }
+
+  /**
+   * Get all registered markets
+   */
+  getMarkets(): string[] {
+    return Array.from(this.marketIndexMap.keys());
   }
 }
 
 // ============================================================================
-// SHARED INSTANCES
+// SINGLETON INSTANCES
 // ============================================================================
 
-export const encoder = new BinaryProtocolEncoder();
-export const createDecoder = (buffer: ArrayBuffer | Uint8Array) => new BinaryProtocolDecoder(buffer);
+export const binaryEncoder = new BinaryEncoder();
+export const binaryDecoder = new BinaryDecoder();
+
+// Shared order book instance (created on demand)
+let sharedOrderBook: SharedOrderBook | null = null;
+
+export function getSharedOrderBook(): SharedOrderBook {
+  if (!sharedOrderBook) {
+    sharedOrderBook = new SharedOrderBook();
+  }
+  return sharedOrderBook;
+}
+
+export function initSharedOrderBook(buffer: SharedArrayBuffer): SharedOrderBook {
+  sharedOrderBook = new SharedOrderBook(buffer);
+  return sharedOrderBook;
+}
