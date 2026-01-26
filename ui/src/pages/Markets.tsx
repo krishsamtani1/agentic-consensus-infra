@@ -345,8 +345,24 @@ function TradeModal({
 function MarketCard({ market }: { market: Market }) {
   const [expanded, setExpanded] = useState(false);
   const [tradeModal, setTradeModal] = useState<'yes' | 'no' | null>(null);
-  const yesPrice = market.last_price_yes ?? 0.5;
-  const noPrice = market.last_price_no ?? 0.5;
+  
+  // Calculate prices from volume or use defaults
+  const totalVol = (market.volume_yes || 0) + (market.volume_no || 0);
+  const yesPrice = totalVol > 0 
+    ? (market.volume_yes || 0) / totalVol 
+    : (market.last_price_yes ?? 0.5);
+  const noPrice = 1 - yesPrice;
+
+  // Category styling
+  const categoryColors: Record<string, string> = {
+    'ai-war': 'bg-purple-500/20 text-purple-400',
+    'election-crisis': 'bg-red-500/20 text-red-400',
+    'tech-drama': 'bg-orange-500/20 text-orange-400',
+    'logistics': 'bg-blue-500/20 text-blue-400',
+    'crypto': 'bg-yellow-500/20 text-yellow-400',
+    'climate': 'bg-green-500/20 text-green-400',
+    'meme-alpha': 'bg-pink-500/20 text-pink-400',
+  };
 
   return (
     <>
@@ -360,7 +376,7 @@ function MarketCard({ market }: { market: Market }) {
         >
           <div className="flex items-start justify-between">
             <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1">
+              <div className="flex items-center gap-2 mb-1 flex-wrap">
                 <span className="text-xs font-mono text-cyan-400 bg-cyan-400/10 px-2 py-0.5 rounded">
                   {market.ticker}
                 </span>
@@ -370,6 +386,14 @@ function MarketCard({ market }: { market: Market }) {
                 )}>
                   {market.status}
                 </span>
+                {market.category && (
+                  <span className={clsx(
+                    'text-xs px-2 py-0.5 rounded',
+                    categoryColors[market.category] || 'bg-slate-600 text-slate-300'
+                  )}>
+                    #{market.category}
+                  </span>
+                )}
               </div>
               <h3 className="text-lg font-semibold text-white">{market.title}</h3>
               <div className="flex items-center gap-4 mt-2 text-sm text-slate-400">
@@ -377,8 +401,19 @@ function MarketCard({ market }: { market: Market }) {
                   <Clock className="w-4 h-4" />
                   {new Date(market.closes_at).toLocaleDateString()}
                 </span>
-                <span>Vol: ${((market.volume_yes + market.volume_no) / 1000).toFixed(0)}K</span>
+                <span>Vol: ${((market.volume_yes || 0) + (market.volume_no || 0)).toLocaleString()}</span>
+                {market.open_interest && (
+                  <span>OI: ${market.open_interest.toLocaleString()}</span>
+                )}
               </div>
+              {/* Tags */}
+              {market.tags && market.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {market.tags.slice(0, 3).map((tag: string) => (
+                    <span key={tag} className="text-xs text-slate-500">{tag}</span>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-4">
@@ -454,12 +489,45 @@ function MarketCard({ market }: { market: Market }) {
 export default function Markets() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
 
-  const filteredMarkets = mockMarkets.filter(m => {
+  // Fetch markets from API
+  const { data: marketsData, isLoading, error, refetch } = useQuery({
+    queryKey: ['markets', statusFilter, categoryFilter],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (statusFilter !== 'all') params.append('status', statusFilter);
+      if (categoryFilter !== 'all') params.append('category', categoryFilter);
+      params.append('limit', '50');
+      
+      const response = await apiClient.get<{ markets: Market[]; total: number }>(
+        `/markets?${params.toString()}`
+      );
+      return response.data;
+    },
+    refetchInterval: 10000, // Refresh every 10s
+  });
+
+  // Use API data, fallback to mock for demo
+  const allMarkets = marketsData?.markets || mockMarkets;
+
+  const filteredMarkets = allMarkets.filter(m => {
     if (statusFilter !== 'all' && m.status !== statusFilter) return false;
     if (search && !m.title.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
+
+  // Topic categories for filtering
+  const categories = [
+    { id: 'all', label: 'All Topics' },
+    { id: 'ai-war', label: '#AIWar' },
+    { id: 'election-crisis', label: '#ElectionCrisis' },
+    { id: 'tech-drama', label: '#TechDrama' },
+    { id: 'logistics', label: '#SupplyChain' },
+    { id: 'crypto', label: '#CryptoChaos' },
+    { id: 'climate', label: '#ClimateCrisis' },
+    { id: 'meme-alpha', label: '#MemeAlpha' },
+  ];
 
   return (
     <div className="p-8">
@@ -473,6 +541,60 @@ export default function Markets() {
           <Plus className="w-5 h-5" />
           Create Market
         </button>
+      </div>
+
+      {/* Stats Bar */}
+      <div className="bg-slate-800 rounded-xl border border-slate-700 p-4 mb-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-6">
+            <div>
+              <div className="text-2xl font-bold text-white">{allMarkets.length}</div>
+              <div className="text-xs text-slate-400">Active Markets</div>
+            </div>
+            <div className="w-px h-10 bg-slate-700" />
+            <div>
+              <div className="text-2xl font-bold text-green-400">
+                ${(allMarkets.reduce((a, m) => a + (m.volume_yes || 0) + (m.volume_no || 0), 0) / 1000000).toFixed(1)}M
+              </div>
+              <div className="text-xs text-slate-400">Total Volume</div>
+            </div>
+            <div className="w-px h-10 bg-slate-700" />
+            <div>
+              <div className="text-2xl font-bold text-purple-400">
+                {new Set(allMarkets.map(m => m.category)).size}
+              </div>
+              <div className="text-xs text-slate-400">Topic Clusters</div>
+            </div>
+          </div>
+          <button
+            onClick={() => refetch()}
+            className="flex items-center gap-2 text-sm text-cyan-400 hover:text-cyan-300"
+          >
+            <Activity className="w-4 h-4" />
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      {/* Topic Clusters */}
+      <div className="mb-4">
+        <div className="text-sm text-slate-400 mb-2">Topic Clusters</div>
+        <div className="flex flex-wrap gap-2">
+          {categories.map(cat => (
+            <button
+              key={cat.id}
+              onClick={() => setCategoryFilter(cat.id)}
+              className={clsx(
+                'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+                categoryFilter === cat.id
+                  ? 'bg-purple-600 text-white'
+                  : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+              )}
+            >
+              {cat.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Filters */}
@@ -505,6 +627,14 @@ export default function Markets() {
           ))}
         </div>
       </div>
+
+      {/* Loading State */}
+      {isLoading && (
+        <div className="text-center py-8">
+          <Activity className="w-8 h-8 text-cyan-400 mx-auto animate-spin mb-2" />
+          <p className="text-slate-400">Loading markets...</p>
+        </div>
+      )}
 
       {/* Markets List */}
       <div className="space-y-4">

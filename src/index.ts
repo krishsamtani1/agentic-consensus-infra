@@ -135,7 +135,7 @@ async function registerRoutes() {
     await app.register(createAgentRoutes(escrow));
 
     // Market operations
-    await app.register(createMarketRoutes(matchingEngine, oracleEngine));
+    await app.register(createMarketRoutes(matchingEngine, oracleEngine, eventBus));
 
     // Order management
     await app.register(createOrderRoutes(matchingEngine));

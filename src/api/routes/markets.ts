@@ -9,12 +9,34 @@ import { CreateMarketRequestSchema } from '../schemas/index.js';
 import { Market, MarketStatus, OutcomeToken } from '../../types.js';
 import { MatchingEngine } from '../../engine/matcher/MatchingEngine.js';
 import { OracleEngine } from '../../oracle/OracleEngine.js';
+import { getMarketSeeder } from '../../oracle/MarketSeeder.js';
+import { EventBus } from '../../events/EventBus.js';
 
 // In-memory store (production would use PostgreSQL)
 const markets: Map<string, Market> = new Map();
+let marketsSeeded = false;
 
-export function createMarketRoutes(engine: MatchingEngine, oracle: OracleEngine) {
+export function createMarketRoutes(engine: MatchingEngine, oracle: OracleEngine, eventBus?: EventBus) {
+  // Seed markets on first load
+  const seedMarkets = async () => {
+    if (marketsSeeded || !eventBus) return;
+    
+    const seeder = getMarketSeeder(eventBus);
+    const seededMarkets = await seeder.seed();
+    
+    for (const market of seededMarkets) {
+      markets.set(market.id, market);
+      engine.initializeMarket(market.id);
+    }
+    
+    marketsSeeded = true;
+    console.log(`[Markets] Loaded ${seededMarkets.length} seeded markets`);
+  };
+
   return async function marketRoutes(fastify: FastifyInstance): Promise<void> {
+    // Seed markets when routes are registered
+    await seedMarkets();
+
     /**
      * POST /v1/markets
      * Create a new prediction market
