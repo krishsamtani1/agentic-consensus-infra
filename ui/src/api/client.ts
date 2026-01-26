@@ -217,3 +217,22 @@ export interface HealthStatus {
 export const healthAPI = {
   check: () => request<HealthStatus>('/../health'),
 };
+
+// ============================================================================
+// UNIFIED API CLIENT
+// ============================================================================
+
+export const apiClient = {
+  agents: agentsAPI,
+  markets: marketsAPI,
+  orders: ordersAPI,
+  health: healthAPI,
+  
+  // Direct request method for custom endpoints
+  request,
+  
+  // Convenience methods
+  get: <T>(endpoint: string) => request<T>(endpoint),
+  post: <T>(endpoint: string, data: unknown) => 
+    request<T>(endpoint, { method: 'POST', body: JSON.stringify(data) }),
+};

@@ -24,6 +24,7 @@ import { createOrderRoutes } from './api/routes/orders.js';
 import { createHeadlinesRoutes } from './api/routes/headlines.js';
 import { createNewsRoutes } from './api/routes/news.js';
 import { createLiveNewsRoutes } from './api/routes/liveNews.js';
+import { createHeadlineFactoryRoutes } from './oracle/HeadlineFactory.js';
 import { washTradingDetector } from './core/CircuitBreaker.js';
 
 import { EscrowLedger } from './engine/escrow/EscrowLedger.js';
@@ -144,6 +145,9 @@ async function registerRoutes() {
 
     // Live news from real RSS/API sources
     await app.register(createLiveNewsRoutes(eventBus));
+
+    // Chaos headline factory (spontaneous market generation)
+    await app.register(createHeadlineFactoryRoutes(eventBus));
 
     // Wash trading status endpoint
     app.get('/wash-trading/status', async () => {

@@ -12,11 +12,61 @@ import {
   MessageSquare,
   Tag,
   Filter,
-  Link2
+  Link2,
+  Trash2,
+  Copy,
+  Zap,
+  Brain,
+  Eye,
+  Shuffle
 } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 import { apiClient } from '../api/client';
+
+// Personality presets for quick agent creation
+const PERSONALITY_PRESETS = [
+  { 
+    id: 'cynic', 
+    name: 'The Cynic', 
+    icon: Eye,
+    description: 'Skeptical and contrarian - bets against hype',
+    prompt: 'You are a cynical contrarian trader. Question every bullish narrative. Look for overconfidence, inflated expectations, and irrational exuberance. Prefer short positions when sentiment is euphoric. Trust hard data over headlines.',
+    color: 'red'
+  },
+  { 
+    id: 'quant', 
+    name: 'High-Frequency Quant', 
+    icon: Zap,
+    description: 'Fast execution, statistical arbitrage',
+    prompt: 'You are a high-frequency quantitative trader. Focus on statistical patterns, mean reversion, and micro-inefficiencies. Execute rapidly with tight risk limits. Prefer high-volume, liquid markets. Target 0.5-2% per trade.',
+    color: 'yellow'
+  },
+  { 
+    id: 'news-junkie', 
+    name: 'The News Junkie', 
+    icon: MessageSquare,
+    description: 'Trades on breaking headlines',
+    prompt: 'You react to breaking news faster than anyone. Monitor headline sentiment and social velocity. Enter positions within seconds of high-impact events. Accept higher volatility for first-mover advantage.',
+    color: 'blue'
+  },
+  { 
+    id: 'oracle', 
+    name: 'The Oracle', 
+    icon: Brain,
+    description: 'Deep research, long-term conviction',
+    prompt: 'You are a patient, deep researcher. Analyze fundamentals, historical precedents, and structural trends. Hold positions for days or weeks. High conviction trades only. Quality over quantity.',
+    color: 'purple'
+  },
+  { 
+    id: 'chaos', 
+    name: 'Chaos Agent', 
+    icon: Shuffle,
+    description: 'Random exploration and discovery',
+    prompt: 'You explore unconventional angles and make unexpected bets. 20% of your trades should be pure exploration of neglected markets. Balance randomness with basic risk management.',
+    color: 'orange'
+  },
+];
 
 // Topic clusters for market grouping
 const TOPIC_CLUSTERS = [
@@ -131,17 +181,43 @@ function TruthScoreBadge({ score }: { score: number }) {
   );
 }
 
-function AgentCard({ agent }: { agent: typeof mockAgents[0] }) {
+function AgentCard({ 
+  agent, 
+  onDelete 
+}: { 
+  agent: typeof mockAgents[0]; 
+  onDelete?: (id: string) => void;
+}) {
   const [showPrompt, setShowPrompt] = useState(false);
+  const [showActions, setShowActions] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  
   const winRate = agent.total_trades > 0 
     ? (agent.winning_trades / agent.total_trades * 100).toFixed(1) 
     : '0.0';
+
+  const handleDelete = async () => {
+    if (!window.confirm(`Delete agent "${agent.name}"? This cannot be undone.`)) return;
+    setIsDeleting(true);
+    try {
+      // Optimistic UI update
+      onDelete?.(agent.id);
+    } catch (error) {
+      console.error('Failed to delete agent:', error);
+      setIsDeleting(false);
+    }
+  };
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-slate-800 rounded-xl border border-slate-700 p-5"
+      exit={{ opacity: 0, scale: 0.9 }}
+      layout
+      className={clsx(
+        "bg-slate-800 rounded-xl border border-slate-700 p-5 relative",
+        isDeleting && "opacity-50 pointer-events-none"
+      )}
     >
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3">
@@ -169,13 +245,49 @@ function AgentCard({ agent }: { agent: typeof mockAgents[0] }) {
             <p className="text-sm text-slate-400">{agent.description}</p>
           </div>
         </div>
-        <button 
-          onClick={() => setShowPrompt(!showPrompt)}
-          className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
-          title="View System Prompt"
-        >
-          <MessageSquare className="w-5 h-5 text-slate-400" />
-        </button>
+        <div className="relative">
+          <button 
+            onClick={() => setShowActions(!showActions)}
+            className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
+          >
+            <MoreVertical className="w-5 h-5 text-slate-400" />
+          </button>
+          
+          {/* Actions dropdown */}
+          <AnimatePresence>
+            {showActions && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="absolute right-0 top-10 z-10 bg-slate-700 rounded-lg border border-slate-600 shadow-xl py-1 min-w-[140px]"
+              >
+                <button
+                  onClick={() => { setShowPrompt(!showPrompt); setShowActions(false); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-slate-600 transition-colors"
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  View Prompt
+                </button>
+                <button
+                  onClick={() => { navigator.clipboard.writeText(agent.id); setShowActions(false); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-slate-600 transition-colors"
+                >
+                  <Copy className="w-4 h-4" />
+                  Copy ID
+                </button>
+                <hr className="border-slate-600 my-1" />
+                <button
+                  onClick={() => { handleDelete(); setShowActions(false); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-red-500/20 transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
 
       {/* System Prompt Preview */}
@@ -276,7 +388,18 @@ function CreateAgentModal({ onClose, onCreated }: { onClose: () => void; onCreat
   const [mcpEndpoint, setMcpEndpoint] = useState('');
   const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
   const [isCreating, setIsCreating] = useState(false);
-  const [activeTab, setActiveTab] = useState<'basic' | 'advanced'>('basic');
+  const [activeTab, setActiveTab] = useState<'basic' | 'personality' | 'advanced'>('basic');
+  const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
+
+  const applyPreset = (presetId: string) => {
+    const preset = PERSONALITY_PRESETS.find(p => p.id === presetId);
+    if (preset) {
+      setSelectedPreset(presetId);
+      setSystemPrompt(preset.prompt);
+      if (!name) setName(preset.name);
+      if (!description) setDescription(preset.description);
+    }
+  };
 
   const handleCreate = async () => {
     setIsCreating(true);
@@ -327,6 +450,17 @@ function CreateAgentModal({ onClose, onCreated }: { onClose: () => void; onCreat
             )}
           >
             Basic Info
+          </button>
+          <button
+            onClick={() => setActiveTab('personality')}
+            className={clsx(
+              'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+              activeTab === 'personality' 
+                ? 'bg-purple-600 text-white' 
+                : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+            )}
+          >
+            Personality
           </button>
           <button
             onClick={() => setActiveTab('advanced')}
@@ -406,6 +540,64 @@ function CreateAgentModal({ onClose, onCreated }: { onClose: () => void; onCreat
                   ))}
                 </div>
               </div>
+            </>
+          )}
+
+          {activeTab === 'personality' && (
+            <>
+              <div>
+                <label className="block text-sm text-slate-400 mb-2">Choose a Personality Preset</label>
+                <div className="grid grid-cols-1 gap-3">
+                  {PERSONALITY_PRESETS.map(preset => {
+                    const Icon = preset.icon;
+                    return (
+                      <button
+                        key={preset.id}
+                        onClick={() => applyPreset(preset.id)}
+                        className={clsx(
+                          'flex items-start gap-3 p-3 rounded-lg border transition-all text-left',
+                          selectedPreset === preset.id 
+                            ? 'border-purple-500 bg-purple-500/10' 
+                            : 'border-slate-600 hover:border-slate-500 bg-slate-700/50'
+                        )}
+                      >
+                        <div className={clsx(
+                          'w-10 h-10 rounded-lg flex items-center justify-center',
+                          preset.color === 'red' && 'bg-red-500/20 text-red-400',
+                          preset.color === 'yellow' && 'bg-yellow-500/20 text-yellow-400',
+                          preset.color === 'blue' && 'bg-blue-500/20 text-blue-400',
+                          preset.color === 'purple' && 'bg-purple-500/20 text-purple-400',
+                          preset.color === 'orange' && 'bg-orange-500/20 text-orange-400',
+                        )}>
+                          <Icon className="w-5 h-5" />
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-white">{preset.name}</span>
+                            {selectedPreset === preset.id && (
+                              <span className="text-xs bg-purple-500 text-white px-1.5 py-0.5 rounded">Selected</span>
+                            )}
+                          </div>
+                          <p className="text-sm text-slate-400 mt-0.5">{preset.description}</p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {selectedPreset && (
+                <div className="bg-slate-700/50 rounded-lg p-3 border border-slate-600">
+                  <div className="text-xs text-slate-400 mb-1">Generated System Prompt</div>
+                  <p className="text-sm text-slate-300 italic">"{systemPrompt.slice(0, 150)}..."</p>
+                  <button
+                    onClick={() => setActiveTab('advanced')}
+                    className="text-xs text-cyan-400 hover:text-cyan-300 mt-2"
+                  >
+                    Edit in Advanced tab →
+                  </button>
+                </div>
+              )}
             </>
           )}
 
@@ -492,11 +684,36 @@ function CreateAgentModal({ onClose, onCreated }: { onClose: () => void; onCreat
 }
 
 export default function Agents() {
+  const [agents, setAgents] = useState(mockAgents);
   const [search, setSearch] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
 
-  const filteredAgents = mockAgents.filter(a => {
+  const handleDeleteAgent = (id: string) => {
+    setAgents(prev => prev.filter(a => a.id !== id));
+  };
+
+  const handleCreateAgent = (newAgent: any) => {
+    const agent = {
+      id: Date.now().toString(),
+      name: newAgent.name || 'New Agent',
+      description: newAgent.description || '',
+      avatar_url: newAgent.avatar_url || '',
+      system_prompt: newAgent.system_prompt || '',
+      mcp_endpoint: newAgent.mcp_endpoint || '',
+      truth_score: 0.5,
+      total_trades: 0,
+      winning_trades: 0,
+      total_pnl: 0,
+      status: 'active',
+      strategy: 'custom',
+      balance: 10000,
+      topics: newAgent.topics || [],
+    };
+    setAgents(prev => [agent, ...prev]);
+  };
+
+  const filteredAgents = agents.filter(a => {
     const matchesSearch = a.name.toLowerCase().includes(search.toLowerCase());
     const matchesTopic = !selectedTopic || a.topics?.includes(selectedTopic);
     return matchesSearch && matchesTopic;
@@ -606,13 +823,24 @@ export default function Agents() {
 
       {/* Agents Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {sortedAgents.map((agent) => (
-          <AgentCard key={agent.id} agent={agent} />
-        ))}
+        <AnimatePresence>
+          {sortedAgents.map((agent) => (
+            <AgentCard 
+              key={agent.id} 
+              agent={agent} 
+              onDelete={handleDeleteAgent}
+            />
+          ))}
+        </AnimatePresence>
       </div>
 
       {/* Create Modal */}
-      {showCreate && <CreateAgentModal onClose={() => setShowCreate(false)} />}
+      {showCreate && (
+        <CreateAgentModal 
+          onClose={() => setShowCreate(false)} 
+          onCreated={handleCreateAgent}
+        />
+      )}
     </div>
   );
 }
