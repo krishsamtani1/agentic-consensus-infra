@@ -471,6 +471,16 @@ export class SharedOrderBook {
 export const binaryEncoder = new BinaryEncoder();
 export const binaryDecoder = new BinaryDecoder();
 
+// Aliases for backward compatibility with WebSocketServer
+export const encoder = binaryEncoder;
+export { BinaryEncoder as BinaryProtocolEncoder };
+export { BinaryDecoder as BinaryProtocolDecoder };
+
+// Factory function for creating new decoders
+export function createDecoder(): BinaryDecoder {
+  return new BinaryDecoder();
+}
+
 // Shared order book instance (created on demand)
 let sharedOrderBook: SharedOrderBook | null = null;
 
