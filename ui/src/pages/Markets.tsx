@@ -498,18 +498,24 @@ export default function Markets() {
       const params = new URLSearchParams();
       if (statusFilter !== 'all') params.append('status', statusFilter);
       if (categoryFilter !== 'all') params.append('category', categoryFilter);
-      params.append('limit', '50');
+      params.append('limit', '100');
       
+      // apiClient.get already unwraps data.data, so response IS the data
       const response = await apiClient.get<{ markets: Market[]; total: number }>(
         `/markets?${params.toString()}`
       );
-      return response.data;
+      console.log('[Markets] Fetched:', response);
+      return response;
     },
-    refetchInterval: 10000, // Refresh every 10s
+    refetchInterval: 5000, // Refresh every 5s
+    retry: 3,
   });
 
   // Use API data, fallback to mock for demo
   const allMarkets = marketsData?.markets || mockMarkets;
+  
+  // Log for debugging
+  console.log('[Markets] isLoading:', isLoading, 'error:', error, 'markets:', allMarkets.length);
 
   const filteredMarkets = allMarkets.filter(m => {
     if (statusFilter !== 'all' && m.status !== statusFilter) return false;
@@ -632,7 +638,42 @@ export default function Markets() {
       {isLoading && (
         <div className="text-center py-8">
           <Activity className="w-8 h-8 text-cyan-400 mx-auto animate-spin mb-2" />
-          <p className="text-slate-400">Loading markets...</p>
+          <p className="text-slate-400">Loading markets from live sources...</p>
+        </div>
+      )}
+
+      {/* Error State */}
+      {error && (
+        <div className="bg-red-900/30 border border-red-700 rounded-lg p-4 mb-6">
+          <div className="flex items-center gap-2 text-red-400">
+            <AlertCircle className="w-5 h-5" />
+            <span className="font-medium">Failed to load markets</span>
+          </div>
+          <p className="text-red-300 text-sm mt-1">{(error as Error).message}</p>
+          <button
+            onClick={() => refetch()}
+            className="mt-2 text-sm text-red-400 hover:text-red-300 underline"
+          >
+            Try again
+          </button>
+        </div>
+      )}
+
+      {/* Live Source Indicator */}
+      {!isLoading && allMarkets.length > 0 && (
+        <div className="flex items-center gap-2 mb-4 text-sm">
+          <div className="flex items-center gap-1 text-green-400">
+            <CheckCircle className="w-4 h-4" />
+            <span>Live Data</span>
+          </div>
+          <span className="text-slate-500">•</span>
+          <span className="text-slate-400">
+            {allMarkets.filter((m: any) => m.metadata?.live_sourced).length} from live headlines
+          </span>
+          <span className="text-slate-500">•</span>
+          <span className="text-slate-400">
+            Updated {new Date().toLocaleTimeString()}
+          </span>
         </div>
       )}
 
@@ -643,10 +684,13 @@ export default function Markets() {
         ))}
       </div>
 
-      {filteredMarkets.length === 0 && (
+      {filteredMarkets.length === 0 && !isLoading && (
         <div className="text-center py-12">
           <Activity className="w-12 h-12 text-slate-600 mx-auto mb-4" />
           <p className="text-slate-400">No markets found</p>
+          <p className="text-slate-500 text-sm mt-2">
+            {error ? 'Check console for errors' : 'Try refreshing or check your API connection'}
+          </p>
         </div>
       )}
     </div>
