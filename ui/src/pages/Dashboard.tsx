@@ -8,13 +8,18 @@ import {
   BarChart3,
   Clock,
   Zap,
-  Radar
+  Radar,
+  ExternalLink,
+  Flame,
+  ArrowRight
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { Link } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import { useWebSocket } from '../hooks/useWebSocket';
 import CommanderRadar from '../components/CommanderRadar';
 import { AgentReasoningTooltip, generateMockReasoning, TradeReasoning } from '../components/AgentReasoningTooltip';
+import { apiClient, Market } from '../api/client';
 
 // Mock data for the dashboard
 const mockStats = {
@@ -51,31 +56,135 @@ function StatCard({ title, value, icon: Icon, trend, color }: StatCardProps) {
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-slate-800 rounded-xl p-6 border border-slate-700"
+      className="bg-[#111111] rounded-xl p-6 border border-[#1a1a1a] hover:border-cyan-500/30 transition-colors"
     >
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-slate-400 text-sm font-medium">{title}</p>
+          <p className="text-gray-500 text-sm font-medium">{title}</p>
           <p className="text-2xl font-bold text-white mt-1 tabular-nums">{value}</p>
         </div>
-        <div className={`p-3 rounded-lg ${color}`}>
+        <div className={`p-3 rounded-xl ${color}`}>
           <Icon className="w-6 h-6 text-white" />
         </div>
       </div>
       {trend !== undefined && (
         <div className="mt-4 flex items-center gap-1">
           {trend >= 0 ? (
-            <TrendingUp className="w-4 h-4 text-green-400" />
+            <TrendingUp className="w-4 h-4 text-emerald-400" />
           ) : (
             <TrendingDown className="w-4 h-4 text-red-400" />
           )}
-          <span className={trend >= 0 ? 'text-green-400' : 'text-red-400'}>
+          <span className={trend >= 0 ? 'text-emerald-400' : 'text-red-400'}>
             {Math.abs(trend).toFixed(1)}%
           </span>
-          <span className="text-slate-500 text-sm ml-1">vs last hour</span>
+          <span className="text-gray-600 text-sm ml-1">vs last hour</span>
         </div>
       )}
     </motion.div>
+  );
+}
+
+// Top Markets Teaser Component
+function TopMarketsTeaser() {
+  const { data: marketsData, isLoading } = useQuery({
+    queryKey: ['top-markets'],
+    queryFn: async () => {
+      const response = await apiClient.get<{ markets: Market[]; total: number }>(
+        '/markets?limit=100'
+      );
+      return response;
+    },
+    refetchInterval: 10000,
+  });
+
+  // Sort by volume and take top 5
+  const topMarkets = (marketsData?.markets || [])
+    .sort((a, b) => ((b.volume_yes || 0) + (b.volume_no || 0)) - ((a.volume_yes || 0) + (a.volume_no || 0)))
+    .slice(0, 5);
+
+  if (isLoading) {
+    return (
+      <div className="bg-[#111111] rounded-xl border border-[#1a1a1a] p-6">
+        <div className="animate-pulse space-y-4">
+          <div className="h-6 bg-gray-800 rounded w-1/3" />
+          <div className="space-y-3">
+            {[1, 2, 3, 4, 5].map(i => (
+              <div key={i} className="h-16 bg-gray-800 rounded" />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-[#111111] rounded-xl border border-[#1a1a1a] overflow-hidden">
+      <div className="p-4 border-b border-[#1a1a1a] flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Flame className="w-5 h-5 text-orange-400" />
+          <h3 className="font-semibold text-white">Hottest Markets</h3>
+          <span className="text-xs bg-orange-500/20 text-orange-400 px-2 py-0.5 rounded-full">LIVE</span>
+        </div>
+        <Link 
+          to="/markets" 
+          className="text-sm text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
+        >
+          View All <ArrowRight className="w-4 h-4" />
+        </Link>
+      </div>
+      <div className="divide-y divide-[#1a1a1a]">
+        {topMarkets.length === 0 ? (
+          <div className="p-8 text-center text-gray-500">
+            No markets available. Check your API connection.
+          </div>
+        ) : (
+          topMarkets.map((market, i) => {
+            const volume = (market.volume_yes || 0) + (market.volume_no || 0);
+            const yesPrice = market.last_price_yes ?? (market.volume_yes && market.volume_no 
+              ? market.volume_yes / (market.volume_yes + market.volume_no) 
+              : 0.5);
+            
+            return (
+              <motion.div
+                key={market.id}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.05 }}
+                className="p-4 hover:bg-white/5 transition-colors"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500/20 to-blue-500/20 flex items-center justify-center text-cyan-400 font-bold text-sm">
+                    #{i + 1}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-mono text-gray-500">{market.ticker}</span>
+                      {market.category && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400">
+                          #{market.category}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-white truncate mt-0.5">{market.title}</p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500">YES</span>
+                      <span className={`text-lg font-bold font-mono ${yesPrice > 0.5 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {(yesPrice * 100).toFixed(0)}¢
+                      </span>
+                    </div>
+                    <div className="text-xs text-gray-600">
+                      ${(volume / 1000).toFixed(1)}K vol
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            );
+          })
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -93,14 +202,14 @@ function LiveFeed() {
   const recentMessages = messages.slice(-10).reverse();
 
   return (
-    <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
-      <div className="p-4 border-b border-slate-700 flex items-center gap-2">
-        <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+    <div className="bg-[#111111] rounded-xl border border-[#1a1a1a] overflow-hidden h-full">
+      <div className="p-4 border-b border-[#1a1a1a] flex items-center gap-2">
+        <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
         <h3 className="font-semibold text-white">Live Activity Feed</h3>
       </div>
-      <div className="divide-y divide-slate-700/50 max-h-80 overflow-auto">
+      <div className="divide-y divide-[#1a1a1a] max-h-80 overflow-auto">
         {recentMessages.length === 0 ? (
-          <div className="p-4 text-slate-500 text-sm text-center">
+          <div className="p-8 text-gray-600 text-sm text-center">
             Waiting for events...
           </div>
         ) : (
@@ -109,12 +218,12 @@ function LiveFeed() {
               key={i}
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
-              className="p-3 hover:bg-slate-700/30 transition-colors"
+              className="p-3 hover:bg-white/5 transition-colors"
             >
               <div className="flex items-center gap-2">
                 <span className="text-xs font-mono text-cyan-400">[{msg.channel}]</span>
                 <span className="text-sm text-white">{msg.event}</span>
-                <span className="text-xs text-slate-500 ml-auto">
+                <span className="text-xs text-gray-600 ml-auto">
                   {new Date(msg.timestamp).toLocaleTimeString()}
                 </span>
               </div>
@@ -128,27 +237,27 @@ function LiveFeed() {
 
 function TradeFeedWithReasoning() {
   return (
-    <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
-      <div className="p-4 border-b border-slate-700 flex items-center gap-2">
+    <div className="bg-[#111111] rounded-xl border border-[#1a1a1a] overflow-hidden">
+      <div className="p-4 border-b border-[#1a1a1a] flex items-center gap-2">
         <Activity className="w-5 h-5 text-purple-400" />
         <h3 className="font-semibold text-white">Recent Trades</h3>
-        <span className="text-xs text-slate-400 ml-auto">Hover for AI reasoning</span>
+        <span className="text-xs text-gray-600 ml-auto">Hover for AI reasoning</span>
       </div>
-      <div className="divide-y divide-slate-700/50 max-h-80 overflow-auto">
+      <div className="divide-y divide-[#1a1a1a] max-h-80 overflow-auto">
         {mockTrades.map((trade, i) => (
           <AgentReasoningTooltip key={i} trade={trade}>
             <motion.div
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: i * 0.1 }}
-              className="p-3 hover:bg-slate-700/30 transition-colors cursor-pointer"
+              className="p-3 hover:bg-white/5 transition-colors cursor-pointer"
             >
               <div className="flex items-center gap-3">
                 <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                  trade.action === 'buy' ? 'bg-green-500/20' : 'bg-red-500/20'
+                  trade.action === 'buy' ? 'bg-emerald-500/20' : 'bg-red-500/20'
                 }`}>
                   {trade.action === 'buy' ? (
-                    <TrendingUp className="w-4 h-4 text-green-400" />
+                    <TrendingUp className="w-4 h-4 text-emerald-400" />
                   ) : (
                     <TrendingDown className="w-4 h-4 text-red-400" />
                   )}
@@ -157,12 +266,12 @@ function TradeFeedWithReasoning() {
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-white">{trade.agent_name}</span>
                     <span className={`text-xs px-1.5 py-0.5 rounded ${
-                      trade.action === 'buy' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+                      trade.action === 'buy' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
                     }`}>
                       {trade.action.toUpperCase()}
                     </span>
                   </div>
-                  <div className="text-xs text-slate-400">
+                  <div className="text-xs text-gray-500">
                     {trade.quantity} {trade.outcome.toUpperCase()} @ {(trade.price * 100).toFixed(0)}¢
                   </div>
                 </div>
@@ -170,7 +279,7 @@ function TradeFeedWithReasoning() {
                   <div className="text-sm font-mono text-white">
                     ${(trade.price * trade.quantity).toFixed(0)}
                   </div>
-                  <div className="text-xs text-slate-500">
+                  <div className="text-xs text-gray-600">
                     {trade.timestamp.toLocaleTimeString()}
                   </div>
                 </div>
@@ -184,79 +293,108 @@ function TradeFeedWithReasoning() {
 }
 
 export default function Dashboard() {
+  // Fetch live stats from API
+  const { data: statsData } = useQuery({
+    queryKey: ['dashboard-stats'],
+    queryFn: async () => {
+      const response = await apiClient.get<{ markets: Market[]; total: number }>('/markets?limit=100');
+      const markets = response?.markets || [];
+      const totalVolume = markets.reduce((a, m) => a + (m.volume_yes || 0) + (m.volume_no || 0), 0);
+      return {
+        totalVolume,
+        activeMarkets: markets.length,
+        totalAgents: 48, // Mock for now
+        avgTruthScore: 0.67, // Mock for now
+      };
+    },
+    refetchInterval: 10000,
+  });
+
+  const liveStats = statsData || mockStats;
+
   return (
     <div className="p-8">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white">Dashboard</h1>
-        <p className="text-slate-400 mt-1">Real-time overview of TRUTH-NET consensus engine</p>
+        <div className="flex items-center gap-3">
+          <h1 className="text-3xl font-bold text-white">Command Center</h1>
+          <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded-full animate-pulse">
+            LIVE
+          </span>
+        </div>
+        <p className="text-gray-500 mt-1">Real-time overview of TRUTH-NET Sovereign Edition</p>
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <StatCard
           title="Total Volume"
-          value={`$${(mockStats.totalVolume / 1000).toFixed(1)}K`}
+          value={`$${(liveStats.totalVolume / 1000).toFixed(1)}K`}
           icon={DollarSign}
           trend={12.5}
-          color="bg-cyan-600"
+          color="bg-gradient-to-br from-cyan-600 to-blue-600"
         />
         <StatCard
           title="Active Markets"
-          value={mockStats.activeMarkets}
+          value={liveStats.activeMarkets}
           icon={BarChart3}
           trend={8.3}
-          color="bg-purple-600"
+          color="bg-gradient-to-br from-purple-600 to-pink-600"
         />
         <StatCard
           title="Total Agents"
-          value={mockStats.totalAgents}
+          value={liveStats.totalAgents}
           icon={Users}
           trend={-2.1}
-          color="bg-orange-600"
+          color="bg-gradient-to-br from-orange-600 to-red-600"
         />
         <StatCard
           title="Avg Truth Score"
-          value={(mockStats.avgTruthScore * 100).toFixed(0) + '%'}
+          value={(liveStats.avgTruthScore * 100).toFixed(0) + '%'}
           icon={Activity}
           trend={3.2}
-          color="bg-green-600"
+          color="bg-gradient-to-br from-emerald-600 to-teal-600"
         />
       </div>
 
+      {/* Top Markets Teaser */}
+      <div className="mb-8">
+        <TopMarketsTeaser />
+      </div>
+
       {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
         {/* Volume Chart */}
-        <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
+        <div className="bg-[#111111] rounded-xl border border-[#1a1a1a] p-6">
           <h3 className="font-semibold text-white mb-4">24h Volume</h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={mockVolumeData}>
                 <defs>
                   <linearGradient id="volumeGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.3} />
+                    <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.4} />
                     <stop offset="95%" stopColor="#06b6d4" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <XAxis 
                   dataKey="hour" 
-                  stroke="#64748b" 
-                  fontSize={12}
+                  stroke="#404040" 
+                  fontSize={11}
                   tickLine={false}
                 />
                 <YAxis 
-                  stroke="#64748b" 
-                  fontSize={12}
+                  stroke="#404040" 
+                  fontSize={11}
                   tickLine={false}
                   tickFormatter={(v) => `$${(v / 1000).toFixed(0)}K`}
                 />
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: '#1e293b',
-                    border: '1px solid #334155',
+                    backgroundColor: '#0a0a0a',
+                    border: '1px solid #262626',
                     borderRadius: '8px',
                   }}
-                  labelStyle={{ color: '#94a3b8' }}
+                  labelStyle={{ color: '#737373' }}
                 />
                 <Area
                   type="monotone"
@@ -271,31 +409,31 @@ export default function Dashboard() {
         </div>
 
         {/* Price Chart */}
-        <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
+        <div className="bg-[#111111] rounded-xl border border-[#1a1a1a] p-6">
           <h3 className="font-semibold text-white mb-4">Sample Market Prices</h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={mockPriceData}>
                 <XAxis 
                   dataKey="tick" 
-                  stroke="#64748b" 
-                  fontSize={12}
+                  stroke="#404040" 
+                  fontSize={11}
                   tickLine={false}
                 />
                 <YAxis 
-                  stroke="#64748b" 
-                  fontSize={12}
+                  stroke="#404040" 
+                  fontSize={11}
                   tickLine={false}
                   domain={[0, 1]}
                   tickFormatter={(v) => `${(v * 100).toFixed(0)}%`}
                 />
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: '#1e293b',
-                    border: '1px solid #334155',
+                    backgroundColor: '#0a0a0a',
+                    border: '1px solid #262626',
                     borderRadius: '8px',
                   }}
-                  labelStyle={{ color: '#94a3b8' }}
+                  labelStyle={{ color: '#737373' }}
                   formatter={(value: number) => [`${(value * 100).toFixed(1)}%`]}
                 />
                 <Line
@@ -321,29 +459,29 @@ export default function Dashboard() {
       </div>
 
       {/* Bottom Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Engine Stats */}
-        <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
+        <div className="bg-[#111111] rounded-xl border border-[#1a1a1a] p-6">
           <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
             <Zap className="w-5 h-5 text-yellow-400" />
             Engine Performance
           </h3>
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <span className="text-slate-400">Trades/sec</span>
+              <span className="text-gray-500">Trades/sec</span>
               <span className="text-white font-mono">{mockStats.tradesPerSecond}</span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-slate-400">Orders in Book</span>
+              <span className="text-gray-500">Orders in Book</span>
               <span className="text-white font-mono">{mockStats.ordersInBook.toLocaleString()}</span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-slate-400">Latency (p99)</span>
-              <span className="text-green-400 font-mono">2.3ms</span>
+              <span className="text-gray-500">Latency (p99)</span>
+              <span className="text-emerald-400 font-mono">2.3ms</span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-slate-400">Circuit Breakers</span>
-              <span className="text-green-400">All Closed</span>
+              <span className="text-gray-500">Circuit Breakers</span>
+              <span className="text-emerald-400">All Closed</span>
             </div>
           </div>
         </div>
@@ -355,14 +493,14 @@ export default function Dashboard() {
       </div>
 
       {/* Radar & Trade Reasoning Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-8">
         {/* Commander's Radar */}
-        <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
+        <div className="bg-[#111111] rounded-xl border border-[#1a1a1a] p-6">
           <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
             <Radar className="w-5 h-5 text-cyan-400" />
             Commander's Radar
           </h3>
-          <p className="text-sm text-slate-400 mb-4">
+          <p className="text-sm text-gray-500 mb-4">
             Market density by category. Larger blips = higher volume.
           </p>
           <CommanderRadar />

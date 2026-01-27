@@ -368,35 +368,35 @@ function MarketCard({ market }: { market: Market }) {
     <>
       <motion.div
         layout
-        className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden"
+        className="bg-[#111111] rounded-xl border border-[#1a1a1a] overflow-hidden hover:border-[#262626] transition-colors"
       >
         <div
-          className="p-5 cursor-pointer hover:bg-slate-700/30 transition-colors"
+          className="p-5 cursor-pointer hover:bg-white/[0.02] transition-colors"
           onClick={() => setExpanded(!expanded)}
         >
           <div className="flex items-start justify-between">
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1 flex-wrap">
-                <span className="text-xs font-mono text-cyan-400 bg-cyan-400/10 px-2 py-0.5 rounded">
+                <span className="text-xs font-mono text-cyan-400 bg-cyan-400/10 px-2 py-0.5 rounded-lg">
                   {market.ticker}
                 </span>
                 <span className={clsx(
-                  'text-xs px-2 py-0.5 rounded',
-                  market.status === 'active' ? 'bg-green-500/20 text-green-400' : 'bg-slate-600 text-slate-400'
+                  'text-xs px-2 py-0.5 rounded-lg',
+                  market.status === 'active' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-gray-800 text-gray-500'
                 )}>
                   {market.status}
                 </span>
                 {market.category && (
                   <span className={clsx(
-                    'text-xs px-2 py-0.5 rounded',
-                    categoryColors[market.category] || 'bg-slate-600 text-slate-300'
+                    'text-xs px-2 py-0.5 rounded-lg',
+                    categoryColors[market.category] || 'bg-gray-800 text-gray-400'
                   )}>
                     #{market.category}
                   </span>
                 )}
               </div>
               <h3 className="text-lg font-semibold text-white">{market.title}</h3>
-              <div className="flex items-center gap-4 mt-2 text-sm text-slate-400">
+              <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
                 <span className="flex items-center gap-1">
                   <Clock className="w-4 h-4" />
                   {new Date(market.closes_at).toLocaleDateString()}
@@ -410,7 +410,7 @@ function MarketCard({ market }: { market: Market }) {
               {market.tags && market.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-2">
                   {market.tags.slice(0, 3).map((tag: string) => (
-                    <span key={tag} className="text-xs text-slate-500">{tag}</span>
+                    <span key={tag} className="text-xs text-gray-600">{tag}</span>
                   ))}
                 </div>
               )}
@@ -420,13 +420,13 @@ function MarketCard({ market }: { market: Market }) {
               {/* Price indicators */}
               <div className="text-right">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-slate-400">YES</span>
-                  <span className="text-lg font-bold text-green-400 font-mono">
+                  <span className="text-sm text-gray-500">YES</span>
+                  <span className="text-lg font-bold text-emerald-400 font-mono">
                     {(yesPrice * 100).toFixed(0)}¢
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-slate-400">NO</span>
+                  <span className="text-sm text-gray-500">NO</span>
                   <span className="text-lg font-bold text-red-400 font-mono">
                     {(noPrice * 100).toFixed(0)}¢
                   </span>
@@ -435,7 +435,7 @@ function MarketCard({ market }: { market: Market }) {
 
               <ChevronRight
                 className={clsx(
-                  'w-5 h-5 text-slate-400 transition-transform',
+                  'w-5 h-5 text-gray-500 transition-transform',
                   expanded && 'rotate-90'
                 )}
               />
@@ -449,21 +449,21 @@ function MarketCard({ market }: { market: Market }) {
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: 'auto', opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
-              className="border-t border-slate-700"
+              className="border-t border-[#1a1a1a]"
             >
-              <div className="p-5">
+              <div className="p-5 bg-black/30">
                 <OrderBookDisplay marketId={market.id} />
 
                 <div className="mt-4 flex gap-3">
                   <button 
                     onClick={(e) => { e.stopPropagation(); setTradeModal('yes'); }}
-                    className="flex-1 bg-green-600 hover:bg-green-500 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                    className="flex-1 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white font-semibold py-2.5 px-4 rounded-xl transition-all shadow-lg shadow-emerald-500/20"
                   >
                     Buy YES @ {(yesPrice * 100).toFixed(0)}¢
                   </button>
                   <button 
                     onClick={(e) => { e.stopPropagation(); setTradeModal('no'); }}
-                    className="flex-1 bg-red-600 hover:bg-red-500 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                    className="flex-1 bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-500 hover:to-pink-500 text-white font-semibold py-2.5 px-4 rounded-xl transition-all shadow-lg shadow-red-500/20"
                   >
                     Buy NO @ {(noPrice * 100).toFixed(0)}¢
                   </button>
@@ -486,10 +486,172 @@ function MarketCard({ market }: { market: Market }) {
   );
 }
 
+// Create Market Modal
+function CreateMarketModal({ onClose, onCreated }: { onClose: () => void; onCreated?: () => void }) {
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [category, setCategory] = useState('tech-earnings');
+  const [closesIn, setClosesIn] = useState('7'); // days
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const categoryOptions = [
+    { id: 'tech-earnings', label: 'Tech & Earnings' },
+    { id: 'logistics', label: 'Logistics & Supply Chain' },
+    { id: 'geopolitics', label: 'Geopolitics' },
+    { id: 'weather', label: 'Weather & Climate' },
+    { id: 'niche-internet', label: 'Internet & Viral' },
+    { id: 'crypto', label: 'Crypto' },
+    { id: 'sports', label: 'Sports' },
+  ];
+
+  const handleSubmit = async () => {
+    if (!title.trim()) {
+      setResult({ success: false, message: 'Title is required' });
+      return;
+    }
+
+    setIsSubmitting(true);
+    setResult(null);
+
+    try {
+      const closesAt = new Date();
+      closesAt.setDate(closesAt.getDate() + parseInt(closesIn));
+
+      await apiClient.post('/markets', {
+        title: title.trim(),
+        description: description.trim() || `Will "${title.trim()}" resolve to YES?`,
+        category,
+        closes_at: closesAt.toISOString(),
+        resolves_at: new Date(closesAt.getTime() + 60 * 60 * 1000).toISOString(),
+      });
+
+      setResult({ success: true, message: 'Market created successfully!' });
+      onCreated?.();
+      setTimeout(onClose, 1000);
+    } catch (error: any) {
+      setResult({
+        success: false,
+        message: error.message || 'Failed to create market',
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-[#111111] rounded-xl border border-[#262626] p-6 w-full max-w-lg"
+      >
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-xl font-bold text-white">Create New Market</h2>
+          <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
+            <X className="w-5 h-5 text-gray-400" />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          {/* Title */}
+          <div>
+            <label className="block text-sm font-medium text-gray-400 mb-2">
+              Market Question
+            </label>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Will X happen by Y date?"
+              className="w-full bg-black border border-[#262626] rounded-lg py-3 px-4 text-white placeholder-gray-600 focus:outline-none focus:border-cyan-500"
+            />
+          </div>
+
+          {/* Description */}
+          <div>
+            <label className="block text-sm font-medium text-gray-400 mb-2">
+              Description (optional)
+            </label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Additional context or resolution criteria..."
+              rows={3}
+              className="w-full bg-black border border-[#262626] rounded-lg py-3 px-4 text-white placeholder-gray-600 focus:outline-none focus:border-cyan-500 resize-none"
+            />
+          </div>
+
+          {/* Category */}
+          <div>
+            <label className="block text-sm font-medium text-gray-400 mb-2">
+              Category
+            </label>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="w-full bg-black border border-[#262626] rounded-lg py-3 px-4 text-white focus:outline-none focus:border-cyan-500"
+            >
+              {categoryOptions.map(opt => (
+                <option key={opt.id} value={opt.id}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Duration */}
+          <div>
+            <label className="block text-sm font-medium text-gray-400 mb-2">
+              Closes In (days)
+            </label>
+            <select
+              value={closesIn}
+              onChange={(e) => setClosesIn(e.target.value)}
+              className="w-full bg-black border border-[#262626] rounded-lg py-3 px-4 text-white focus:outline-none focus:border-cyan-500"
+            >
+              <option value="1">1 day</option>
+              <option value="3">3 days</option>
+              <option value="7">7 days</option>
+              <option value="14">14 days</option>
+              <option value="30">30 days</option>
+              <option value="90">90 days</option>
+            </select>
+          </div>
+
+          {/* Result Message */}
+          {result && (
+            <div className={clsx(
+              'p-3 rounded-lg flex items-center gap-2',
+              result.success ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
+            )}>
+              {result.success ? <CheckCircle className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+              <span>{result.message}</span>
+            </div>
+          )}
+
+          {/* Submit Button */}
+          <button
+            onClick={handleSubmit}
+            disabled={isSubmitting || !title.trim()}
+            className={clsx(
+              'w-full py-3 rounded-lg font-semibold transition-all',
+              isSubmitting || !title.trim()
+                ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                : 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white hover:from-cyan-500 hover:to-blue-500'
+            )}
+          >
+            {isSubmitting ? 'Creating...' : 'Create Market'}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 export default function Markets() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   // Fetch markets from API
   const { data: marketsData, isLoading, error, refetch } = useQuery({
@@ -541,35 +703,48 @@ export default function Markets() {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold text-white">Markets</h1>
-          <p className="text-slate-400 mt-1">Browse and trade prediction markets</p>
+          <p className="text-gray-500 mt-1">Browse and trade prediction markets</p>
         </div>
-        <button className="flex items-center gap-2 bg-cyan-600 hover:bg-cyan-500 text-white font-medium py-2 px-4 rounded-lg transition-colors">
+        <button 
+          onClick={() => setShowCreateModal(true)}
+          className="flex items-center gap-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-medium py-2.5 px-5 rounded-xl transition-all shadow-lg shadow-cyan-500/20 hover:shadow-cyan-500/30"
+        >
           <Plus className="w-5 h-5" />
           Create Market
         </button>
       </div>
 
+      {/* Create Market Modal */}
+      <AnimatePresence>
+        {showCreateModal && (
+          <CreateMarketModal 
+            onClose={() => setShowCreateModal(false)} 
+            onCreated={() => refetch()}
+          />
+        )}
+      </AnimatePresence>
+
       {/* Stats Bar */}
-      <div className="bg-slate-800 rounded-xl border border-slate-700 p-4 mb-6">
+      <div className="bg-[#111111] rounded-xl border border-[#1a1a1a] p-4 mb-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-6">
             <div>
               <div className="text-2xl font-bold text-white">{allMarkets.length}</div>
-              <div className="text-xs text-slate-400">Active Markets</div>
+              <div className="text-xs text-gray-500">Active Markets</div>
             </div>
-            <div className="w-px h-10 bg-slate-700" />
+            <div className="w-px h-10 bg-[#262626]" />
             <div>
-              <div className="text-2xl font-bold text-green-400">
+              <div className="text-2xl font-bold text-emerald-400">
                 ${(allMarkets.reduce((a, m) => a + (m.volume_yes || 0) + (m.volume_no || 0), 0) / 1000000).toFixed(1)}M
               </div>
-              <div className="text-xs text-slate-400">Total Volume</div>
+              <div className="text-xs text-gray-500">Total Volume</div>
             </div>
-            <div className="w-px h-10 bg-slate-700" />
+            <div className="w-px h-10 bg-[#262626]" />
             <div>
               <div className="text-2xl font-bold text-purple-400">
                 {new Set(allMarkets.map(m => m.category)).size}
               </div>
-              <div className="text-xs text-slate-400">Topic Clusters</div>
+              <div className="text-xs text-gray-500">Topic Clusters</div>
             </div>
           </div>
           <button
@@ -584,17 +759,17 @@ export default function Markets() {
 
       {/* Topic Clusters */}
       <div className="mb-4">
-        <div className="text-sm text-slate-400 mb-2">Topic Clusters</div>
+        <div className="text-sm text-gray-500 mb-2">Topic Clusters</div>
         <div className="flex flex-wrap gap-2">
           {categories.map(cat => (
             <button
               key={cat.id}
               onClick={() => setCategoryFilter(cat.id)}
               className={clsx(
-                'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+                'px-3 py-1.5 rounded-xl text-sm font-medium transition-all',
                 categoryFilter === cat.id
-                  ? 'bg-purple-600 text-white'
-                  : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                  ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg shadow-purple-500/20'
+                  : 'bg-[#1a1a1a] text-gray-400 hover:bg-[#262626] hover:text-white'
               )}
             >
               {cat.label}
@@ -606,13 +781,13 @@ export default function Markets() {
       {/* Filters */}
       <div className="flex items-center gap-4 mb-6">
         <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
           <input
             type="text"
             placeholder="Search markets..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-slate-800 border border-slate-700 rounded-lg py-2 pl-10 pr-4 text-white placeholder-slate-400 focus:outline-none focus:border-cyan-500"
+            className="w-full bg-black border border-[#262626] rounded-xl py-2.5 pl-10 pr-4 text-white placeholder-gray-600 focus:outline-none focus:border-cyan-500"
           />
         </div>
 
@@ -622,10 +797,10 @@ export default function Markets() {
               key={status}
               onClick={() => setStatusFilter(status)}
               className={clsx(
-                'px-4 py-2 rounded-lg font-medium transition-colors',
+                'px-4 py-2 rounded-xl font-medium transition-all',
                 statusFilter === status
-                  ? 'bg-cyan-600 text-white'
-                  : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                  ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-lg shadow-cyan-500/20'
+                  : 'bg-[#1a1a1a] text-gray-400 hover:bg-[#262626]'
               )}
             >
               {status.charAt(0).toUpperCase() + status.slice(1)}

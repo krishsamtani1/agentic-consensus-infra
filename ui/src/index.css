@@ -7,16 +7,26 @@
   line-height: 1.5;
   font-weight: 400;
   color: #e2e8f0;
-  background-color: #0f172a;
+  background-color: #000000;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  
+  /* TRUTH-NET Brand Colors */
+  --truth-cyan: #06b6d4;
+  --truth-blue: #3b82f6;
+  --truth-purple: #8b5cf6;
+  --truth-dark: #0a0a0a;
+  --truth-surface: #111111;
+  --truth-surface-light: #1a1a1a;
+  --truth-border: #262626;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
+  background: linear-gradient(135deg, #000000 0%, #0a0a0a 50%, #111111 100%);
 }
 
 /* Custom scrollbar */
