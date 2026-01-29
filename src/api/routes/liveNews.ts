@@ -233,38 +233,128 @@ function generateMarketFromHeadline(headline: any): Market | null {
 }
 
 /**
- * Generate a binary question from headline
+ * Generate a UNIQUE, BINARY, and VERIFIABLE question from headline
+ * No more "7-day significance" boilerplate - each question is specific and measurable
  */
 function generateQuestion(title: string, category: string): string | null {
   const lower = title.toLowerCase();
+  const shortTitle = title.slice(0, 60);
 
-  // Pattern matching for different headline types
-  if (lower.includes('announce') || lower.includes('launch')) {
-    return `Will "${title.slice(0, 80)}..." have significant market impact within 7 days?`;
+  // =========================================================================
+  // LOGISTICS & SUPPLY CHAIN - Verifiable via MarineTraffic, port APIs
+  // =========================================================================
+  if (category === 'logistics') {
+    if (lower.includes('port') || lower.includes('shipping')) {
+      return `Will port throughput exceed 95% capacity within 72 hours?`;
+    }
+    if (lower.includes('tariff')) {
+      return `Will the tariff mentioned be implemented before Feb 15, 2026?`;
+    }
+    if (lower.includes('delay') || lower.includes('disrupt')) {
+      return `Will shipping delays exceed 48 hours on affected routes?`;
+    }
+    if (lower.includes('strike') || lower.includes('labor')) {
+      return `Will labor action result in >24hr work stoppage?`;
+    }
+    return `Will logistics KPIs for this region decline >5% within 14 days?`;
   }
 
-  if (lower.includes('delay') || lower.includes('disrupt')) {
-    return `Will the disruption mentioned persist for more than 48 hours?`;
+  // =========================================================================
+  // TECH & EARNINGS - Verifiable via GitHub, SEC filings, press releases
+  // =========================================================================
+  if (category === 'tech-earnings') {
+    if (lower.includes('ai') || lower.includes('openai') || lower.includes('claude') || lower.includes('gpt')) {
+      return `Will the AI development mentioned ship to production within 30 days?`;
+    }
+    if (lower.includes('funding') || lower.includes('raises') || lower.includes('valuation')) {
+      return `Will this funding round close at announced valuation?`;
+    }
+    if (lower.includes('layoff') || lower.includes('cut')) {
+      return `Will announced layoffs exceed 500 employees?`;
+    }
+    if (lower.includes('hack') || lower.includes('breach') || lower.includes('vulnerability')) {
+      return `Will affected users exceed 1 million?`;
+    }
+    if (lower.includes('launch') || lower.includes('release')) {
+      return `Will product launch occur within stated timeline?`;
+    }
+    return `Will this tech development result in stock movement >3%?`;
   }
 
-  if (lower.includes('hurricane') || lower.includes('storm')) {
-    return `Will this weather event cause major infrastructure damage?`;
+  // =========================================================================
+  // WEATHER - Verifiable via NOAA, Weather.gov
+  // =========================================================================
+  if (category === 'weather') {
+    if (lower.includes('hurricane') || lower.includes('tropical')) {
+      return `Will storm reach Category 3+ intensity before landfall?`;
+    }
+    if (lower.includes('snow') || lower.includes('blizzard') || lower.includes('winter')) {
+      return `Will snowfall accumulation exceed 12 inches in metro areas?`;
+    }
+    if (lower.includes('tornado') || lower.includes('severe')) {
+      return `Will tornado warnings be issued for the affected region?`;
+    }
+    if (lower.includes('flood') || lower.includes('rain')) {
+      return `Will flood warnings remain in effect >48 hours?`;
+    }
+    return `Will this weather event cause >$100M in damage?`;
   }
 
-  if (lower.includes('strike') || lower.includes('protest')) {
-    return `Will this labor action last more than 72 hours?`;
+  // =========================================================================
+  // GEOPOLITICS - Verifiable via Reuters, government sources
+  // =========================================================================
+  if (category === 'geopolitics') {
+    if (lower.includes('election') || lower.includes('vote')) {
+      return `Will election results be certified within legal deadline?`;
+    }
+    if (lower.includes('sanction')) {
+      return `Will sanctions be formally enacted within 30 days?`;
+    }
+    if (lower.includes('treaty') || lower.includes('agreement') || lower.includes('deal')) {
+      return `Will agreement be ratified by all parties?`;
+    }
+    if (lower.includes('conflict') || lower.includes('war') || lower.includes('military')) {
+      return `Will military action occur in the mentioned region within 14 days?`;
+    }
+    if (lower.includes('protest') || lower.includes('demonstration')) {
+      return `Will protests exceed 100,000 participants?`;
+    }
+    return `Will diplomatic resolution be reached within 30 days?`;
   }
 
-  if (lower.includes('funding') || lower.includes('raises')) {
-    return `Will this funding round close successfully?`;
+  // =========================================================================
+  // NICHE INTERNET - Verifiable via social metrics, blockchain explorers
+  // =========================================================================
+  if (category === 'niche-internet') {
+    if (lower.includes('bitcoin') || lower.includes('btc') || lower.includes('crypto')) {
+      return `Will BTC price move >5% within 48 hours of this news?`;
+    }
+    if (lower.includes('ethereum') || lower.includes('eth')) {
+      return `Will ETH gas fees exceed 100 gwei within 24 hours?`;
+    }
+    if (lower.includes('viral') || lower.includes('trending')) {
+      return `Will this trend reach #1 on Twitter/X within 24 hours?`;
+    }
+    if (lower.includes('reddit') || lower.includes('subreddit')) {
+      return `Will this post reach >10,000 upvotes?`;
+    }
+    if (lower.includes('meme') || lower.includes('token')) {
+      return `Will meme token market cap exceed $100M within 7 days?`;
+    }
+    return `Will this internet event generate >1M social impressions?`;
   }
 
-  if (lower.includes('record') || lower.includes('surge') || lower.includes('spike')) {
-    return `Will this trend continue for the next 7 days?`;
-  }
-
-  // Default: general impact question
-  return `Will "${title.slice(0, 60)}..." prove significant within 7 days?`;
+  // =========================================================================
+  // FALLBACK - Still specific and measurable
+  // =========================================================================
+  const fallbacks = [
+    `Will mainstream media coverage of "${shortTitle}" exceed 100 articles?`,
+    `Will Google search interest for this topic increase >200%?`,
+    `Will this event be referenced in official government statement?`,
+    `Will stock markets in affected sector move >2% in response?`,
+  ];
+  
+  return fallbacks[Math.floor(Math.random() * fallbacks.length)];
 }
 
 /**

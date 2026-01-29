@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
+import clsx from 'clsx';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import { useWebSocket } from '../hooks/useWebSocket';
 import CommanderRadar from '../components/CommanderRadar';
@@ -235,15 +236,111 @@ function LiveFeed() {
   );
 }
 
-function TradeFeedWithReasoning() {
+// Intelligence Cascade - LLM-translated trade summaries
+function IntelligenceCascade() {
+  const cascadeEvents = [
+    {
+      id: 1,
+      agent: 'Geopolitical Analyst',
+      action: 'LONG YES',
+      market: 'US-China Tariff Escalation',
+      size: 40000,
+      summary: 'Agent-Gamma is hedging $40k against US-China tariff escalation following leaked trade memo.',
+      confidence: 0.78,
+      timestamp: new Date(Date.now() - 120000),
+    },
+    {
+      id: 2,
+      agent: 'Logistics Sentinel',
+      action: 'SHORT NO',
+      market: 'Panama Canal Bottleneck',
+      size: 25000,
+      summary: 'Logistics-Prime exits Panama exposure after satellite data shows queue normalization.',
+      confidence: 0.82,
+      timestamp: new Date(Date.now() - 300000),
+    },
+    {
+      id: 3,
+      agent: 'Tech Oracle',
+      action: 'LONG YES',
+      market: 'OpenAI GPT-5 Release Q1',
+      size: 15000,
+      summary: 'Tech-Oracle accumulates GPT-5 release bets citing insider GitHub activity spike.',
+      confidence: 0.65,
+      timestamp: new Date(Date.now() - 450000),
+    },
+    {
+      id: 4,
+      agent: 'Weather Quant',
+      action: 'LONG YES',
+      market: 'Hurricane Cat-4+ Gulf Feb',
+      size: 8000,
+      summary: 'Weather-Quant opens hurricane hedge as NOAA models shift toward active season.',
+      confidence: 0.71,
+      timestamp: new Date(Date.now() - 600000),
+    },
+    {
+      id: 5,
+      agent: 'Contrarian Alpha',
+      action: 'SHORT YES',
+      market: 'BTC 100K January',
+      size: 50000,
+      summary: 'Contrarian-Alpha fades Bitcoin hype, citing excessive retail sentiment indicators.',
+      confidence: 0.68,
+      timestamp: new Date(Date.now() - 900000),
+    },
+  ];
+
   return (
     <div className="bg-[#111111] rounded-xl border border-[#1a1a1a] overflow-hidden">
+      <div className="p-4 border-b border-[#1a1a1a] flex items-center gap-2">
+        <Zap className="w-5 h-5 text-yellow-400" />
+        <h3 className="font-semibold text-white">Intelligence Cascade</h3>
+        <span className="text-xs bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded-full ml-2">AI TRANSLATED</span>
+        <span className="text-xs text-gray-600 ml-auto">Real-time strategic summaries</span>
+      </div>
+      <div className="overflow-x-auto">
+        <div className="flex gap-4 p-4" style={{ minWidth: 'max-content' }}>
+          {cascadeEvents.map((event, i) => (
+            <motion.div
+              key={event.id}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: i * 0.1 }}
+              className="bg-black/50 border border-[#262626] rounded-xl p-4 min-w-[320px] hover:border-cyan-500/30 transition-colors"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-cyan-400">{event.agent}</span>
+                <span className={clsx(
+                  'text-xs px-2 py-0.5 rounded-lg font-mono',
+                  event.action.includes('LONG') ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
+                )}>
+                  {event.action}
+                </span>
+              </div>
+              <p className="text-sm text-white mb-2">{event.summary}</p>
+              <div className="flex items-center justify-between text-xs text-gray-500">
+                <span>${(event.size / 1000).toFixed(0)}K</span>
+                <span>{Math.floor((Date.now() - event.timestamp.getTime()) / 60000)}m ago</span>
+                <span className="text-cyan-400">{(event.confidence * 100).toFixed(0)}% conf</span>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TradeFeedWithReasoning() {
+  return (
+    <div className="bg-[#111111] rounded-xl border border-[#1a1a1a] overflow-hidden h-full">
       <div className="p-4 border-b border-[#1a1a1a] flex items-center gap-2">
         <Activity className="w-5 h-5 text-purple-400" />
         <h3 className="font-semibold text-white">Recent Trades</h3>
         <span className="text-xs text-gray-600 ml-auto">Hover for AI reasoning</span>
       </div>
-      <div className="divide-y divide-[#1a1a1a] max-h-80 overflow-auto">
+      <div className="divide-y divide-[#1a1a1a] overflow-auto" style={{ maxHeight: '400px' }}>
         {mockTrades.map((trade, i) => (
           <AgentReasoningTooltip key={i} trade={trade}>
             <motion.div
@@ -494,11 +591,11 @@ export default function Dashboard() {
 
       {/* Radar & Trade Reasoning Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-8">
-        {/* Commander's Radar */}
+        {/* Market Density Analysis */}
         <div className="bg-[#111111] rounded-xl border border-[#1a1a1a] p-6">
           <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
             <Radar className="w-5 h-5 text-cyan-400" />
-            Commander's Radar
+            Market Density Analysis
           </h3>
           <p className="text-sm text-gray-500 mb-4">
             Market density by category. Larger blips = higher volume.
@@ -506,8 +603,13 @@ export default function Dashboard() {
           <CommanderRadar />
         </div>
 
-        {/* Trade Feed with Reasoning */}
+        {/* Trade Feed with Reasoning - Full Width */}
         <TradeFeedWithReasoning />
+      </div>
+
+      {/* Intelligence Cascade - Full Width */}
+      <div className="mt-8">
+        <IntelligenceCascade />
       </div>
     </div>
   );

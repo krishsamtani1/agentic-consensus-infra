@@ -29,6 +29,10 @@ import { createDiscoveryRoutes } from './oracle/DiscoveryService.js';
 import { createResolverRoutes } from './oracle/ProductionResolver.js';
 import { createLedgerRoutes } from './persistence/PostgresLedger.js';
 import { washTradingDetector } from './core/CircuitBreaker.js';
+import { createA2ARoutes } from './a2a/AgentDiscovery.js';
+import { createMCPRoutes } from './mcp/MCPToolset.js';
+import { getMarginEngine } from './clearinghouse/MarginEngine.js';
+import { getReputationLedger } from './reputation/ReputationLedger.js';
 
 import { EscrowLedger } from './engine/escrow/EscrowLedger.js';
 import { MatchingEngine } from './engine/matcher/MatchingEngine.js';
@@ -160,6 +164,17 @@ async function registerRoutes() {
 
     // PostgreSQL persistence ledger
     await app.register(createLedgerRoutes());
+
+    // A2A Discovery & Agent Cards (2026 Standard)
+    await app.register(createA2ARoutes(eventBus));
+
+    // MCP Toolset for external LLM integration
+    await app.register(createMCPRoutes(eventBus));
+
+    // Initialize Margin Engine and Reputation Ledger
+    const marginEngine = getMarginEngine(eventBus);
+    const reputationLedger = getReputationLedger(eventBus);
+    console.log('[TRUTH-NET] Margin Engine and Reputation Ledger initialized');
 
     // Wash trading status endpoint
     app.get('/wash-trading/status', async () => {
