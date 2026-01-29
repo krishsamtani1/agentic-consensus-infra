@@ -281,7 +281,7 @@ interface DemoAgent {
 }
 
 // Demo scenario types
-type DemoScenario = 'panama-canal' | 'political-chaos' | 'ai-drama';
+type DemoScenario = 'panama-canal' | 'political-chaos' | 'ai-drama' | 'live-headlines';
 
 interface DemoScenarioConfig {
   id: DemoScenario;
@@ -289,6 +289,7 @@ interface DemoScenarioConfig {
   description: string;
   market: string;
   agents: DemoAgent[];
+  isLive?: boolean;
 }
 
 const DEMO_SCENARIOS: Record<DemoScenario, DemoScenarioConfig> = {
@@ -361,6 +362,25 @@ const DEMO_SCENARIOS: Record<DemoScenario, DemoScenarioConfig> = {
       { id: '10', name: 'HF-Leaderboard-Bot', role: 'informant', avatar: '🏆', confidence: 0.86, position: { yes: 0, no: 10000 }, pnl: 5300 },
     ],
   },
+  'live-headlines': {
+    id: 'live-headlines',
+    name: 'Live Headlines Demo',
+    description: '10 agents trading actual daily headlines from live RSS feeds in real-time.',
+    market: 'LIVE-HEADLINES-TODAY',
+    isLive: true,
+    agents: [
+      { id: '1', name: 'TRUTH-NET Oracle', role: 'informant', avatar: '⚡', confidence: 0.92, position: { yes: 0, no: 0 }, pnl: 0 },
+      { id: '2', name: 'Market Maker Prime', role: 'market-maker', avatar: '⚖️', confidence: 0.50, position: { yes: 0, no: 0 }, pnl: 0 },
+      { id: '3', name: 'Logistics Sentinel', role: 'hedger', avatar: '🚢', confidence: 0.78, position: { yes: 0, no: 0 }, pnl: 0 },
+      { id: '4', name: 'Geopolitical Analyst', role: 'informant', avatar: '🌍', confidence: 0.85, position: { yes: 0, no: 0 }, pnl: 0 },
+      { id: '5', name: 'Tech Oracle', role: 'informant', avatar: '💻', confidence: 0.88, position: { yes: 0, no: 0 }, pnl: 0 },
+      { id: '6', name: 'Weather Quant', role: 'informant', avatar: '🌡️', confidence: 0.81, position: { yes: 0, no: 0 }, pnl: 0 },
+      { id: '7', name: 'Meme Alpha', role: 'arbitrageur', avatar: '🚀', confidence: 0.65, position: { yes: 0, no: 0 }, pnl: 0 },
+      { id: '8', name: 'Risk Guardian', role: 'hedger', avatar: '🛡️', confidence: 0.72, position: { yes: 0, no: 0 }, pnl: 0 },
+      { id: '9', name: 'Arbitrage Bot', role: 'arbitrageur', avatar: '🎯', confidence: 0.68, position: { yes: 0, no: 0 }, pnl: 0 },
+      { id: '10', name: 'Contrarian Alpha', role: 'arbitrageur', avatar: '🔄', confidence: 0.55, position: { yes: 0, no: 0 }, pnl: 0 },
+    ],
+  },
 };
 
 // Legacy export for backward compatibility
@@ -375,7 +395,7 @@ export default function Vision() {
   const [demoMode, setDemoMode] = useState<'idle' | 'loading' | 'active'>('idle');
   const [activeAgents, setActiveAgents] = useState<DemoAgent[]>([]);
   const [consensusPrice, setConsensusPrice] = useState(0.35);
-  const [selectedScenario, setSelectedScenario] = useState<DemoScenario>('political-chaos');
+  const [selectedScenario, setSelectedScenario] = useState<DemoScenario>('live-headlines');
   const [simulationStats, setSimulationStats] = useState({
     headlines: 0,
     markets: 0,
@@ -422,18 +442,61 @@ export default function Vision() {
     setDemoMode('loading');
     setActiveAgents([]);
     
+    // For live-headlines, try to fetch real market data
+    let liveMarkets: any[] = [];
+    if (scenario.isLive) {
+      try {
+        const response = await apiClient.get<{ markets: any[]; total: number }>('/markets?limit=10');
+        liveMarkets = response?.markets || [];
+        console.log('[Vision] Fetched live markets:', liveMarkets.length);
+      } catch (e) {
+        console.error('[Vision] Failed to fetch live markets:', e);
+      }
+    }
+    
     // Animate agents joining (faster for larger scenarios)
     const delay = scenario.agents.length > 15 ? 100 : 200;
     for (let i = 0; i < scenario.agents.length; i++) {
       await new Promise(r => setTimeout(r, delay));
-      setActiveAgents(prev => [...prev, scenario.agents[i]]);
+      
+      // For live demo, assign agents to real markets
+      const agent = { ...scenario.agents[i] };
+      if (liveMarkets.length > 0) {
+        const market = liveMarkets[i % liveMarkets.length];
+        const yesPrice = market.last_price_yes || 0.5;
+        const volume = ((market.volume_yes || 0) + (market.volume_no || 0)) / 10;
+        
+        // Agent takes position based on their role
+        if (agent.role === 'informant') {
+          agent.position = { yes: 0, no: Math.floor(volume * 0.6) };
+          agent.confidence = 0.75 + Math.random() * 0.2;
+        } else if (agent.role === 'hedger') {
+          agent.position = { yes: Math.floor(volume * 0.4), no: 0 };
+          agent.confidence = 0.6 + Math.random() * 0.15;
+        } else if (agent.role === 'market-maker') {
+          agent.position = { yes: Math.floor(volume * 0.3), no: Math.floor(volume * 0.3) };
+          agent.confidence = 0.5;
+        } else {
+          agent.position = { yes: Math.floor(volume * 0.2), no: Math.floor(volume * 0.2) };
+          agent.confidence = 0.55 + Math.random() * 0.2;
+        }
+      }
+      
+      setActiveAgents(prev => [...prev, agent]);
     }
 
     setDemoMode('active');
 
+    // Set initial price from live data if available
+    if (liveMarkets.length > 0) {
+      const avgPrice = liveMarkets.reduce((sum, m) => sum + (m.last_price_yes || 0.5), 0) / liveMarkets.length;
+      setConsensusPrice(avgPrice);
+    }
+
     // Simulate price discovery with varying volatility
     const volatility = selectedScenario === 'political-chaos' ? 0.04 : 
-                       selectedScenario === 'ai-drama' ? 0.05 : 0.02;
+                       selectedScenario === 'ai-drama' ? 0.05 : 
+                       selectedScenario === 'live-headlines' ? 0.03 : 0.02;
     
     const priceInterval = setInterval(() => {
       setConsensusPrice(prev => {
@@ -442,10 +505,13 @@ export default function Vision() {
       });
 
       // Update agent PnLs with scenario-specific dynamics
+      const pnlMultiplier = selectedScenario === 'ai-drama' ? 500 : 
+                            selectedScenario === 'live-headlines' ? 300 : 200;
+      
       setActiveAgents(agents => 
         agents.map(a => ({
           ...a,
-          pnl: a.pnl + (Math.random() - 0.5) * (selectedScenario === 'ai-drama' ? 500 : 200),
+          pnl: a.pnl + (Math.random() - 0.5) * pnlMultiplier,
           confidence: Math.max(0.3, Math.min(0.99, a.confidence + (Math.random() - 0.5) * 0.02)),
         }))
       );
