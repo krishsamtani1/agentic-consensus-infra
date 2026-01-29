@@ -33,6 +33,9 @@ import { createA2ARoutes } from './a2a/AgentDiscovery.js';
 import { createMCPRoutes } from './mcp/MCPToolset.js';
 import { getMarginEngine } from './clearinghouse/MarginEngine.js';
 import { getReputationLedger } from './reputation/ReputationLedger.js';
+import { getDoctrineEngine } from './core/DoctrineEngine.js';
+import { getAgentManager } from './core/AgentManager.js';
+import { createGovernanceRoutes } from './api/routes/governance.js';
 
 import { EscrowLedger } from './engine/escrow/EscrowLedger.js';
 import { MatchingEngine } from './engine/matcher/MatchingEngine.js';
@@ -175,6 +178,14 @@ async function registerRoutes() {
     const marginEngine = getMarginEngine(eventBus);
     const reputationLedger = getReputationLedger(eventBus);
     console.log('[TRUTH-NET] Margin Engine and Reputation Ledger initialized');
+
+    // Governance & Agent Management
+    await app.register(createGovernanceRoutes(eventBus));
+    
+    // Initialize Doctrine Engine and Agent Manager
+    const doctrineEngine = getDoctrineEngine(eventBus);
+    const agentManager = getAgentManager(eventBus);
+    console.log('[TRUTH-NET] Doctrine Engine and Agent Manager initialized');
 
     // Wash trading status endpoint
     app.get('/wash-trading/status', async () => {

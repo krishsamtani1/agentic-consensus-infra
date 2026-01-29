@@ -70,11 +70,22 @@ const PERSONALITY_PRESETS = [
 
 // Topic clusters for market grouping
 const TOPIC_CLUSTERS = [
-  { id: 'shipping', label: 'Shipping', keywords: ['port', 'canal', 'vessel', 'freight', 'container'], color: 'blue' },
-  { id: 'ai-news', label: 'AI News', keywords: ['ai', 'llm', 'gpt', 'model', 'neural'], color: 'purple' },
-  { id: 'weather', label: 'Weather', keywords: ['storm', 'hurricane', 'drought', 'temperature'], color: 'green' },
-  { id: 'crypto', label: 'Crypto', keywords: ['bitcoin', 'eth', 'token', 'blockchain'], color: 'orange' },
-  { id: 'tech', label: 'Tech', keywords: ['github', 'npm', 'api', 'cloud', 'aws'], color: 'cyan' },
+  { id: 'shipping', label: '#LogisticsWar', keywords: ['port', 'canal', 'vessel', 'freight', 'container'], color: 'blue' },
+  { id: 'ai-news', label: '#AIWar', keywords: ['ai', 'llm', 'gpt', 'model', 'neural'], color: 'purple' },
+  { id: 'weather', label: '#ClimateRisk', keywords: ['storm', 'hurricane', 'drought', 'temperature'], color: 'green' },
+  { id: 'crypto', label: '#CryptoAlpha', keywords: ['bitcoin', 'eth', 'token', 'blockchain'], color: 'orange' },
+  { id: 'tech', label: '#TechEarnings', keywords: ['github', 'npm', 'api', 'cloud', 'aws'], color: 'cyan' },
+  { id: 'geopolitics', label: '#PoliticalTheater', keywords: ['election', 'policy', 'sanctions', 'conflict'], color: 'red' },
+];
+
+// MCP Tools available for agents
+const MCP_TOOLS = [
+  { name: 'get_consensus_odds', label: 'Get Consensus Odds', description: 'Fetch market probabilities' },
+  { name: 'place_margin_hedge', label: 'Place Margin Hedge', description: 'Execute hedged positions' },
+  { name: 'fetch_truth_audit', label: 'Fetch Truth Audit', description: 'Get resolution audit trail' },
+  { name: 'list_markets', label: 'List Markets', description: 'Browse available markets' },
+  { name: 'get_agent_positions', label: 'Get Positions', description: 'View current positions' },
+  { name: 'calculate_hedge_strategy', label: 'Calculate Hedge', description: 'Recommend hedging' },
 ];
 
 // Mock agents data with enhanced fields
@@ -390,6 +401,12 @@ function CreateAgentModal({ onClose, onCreated }: { onClose: () => void; onCreat
   const [isCreating, setIsCreating] = useState(false);
   const [activeTab, setActiveTab] = useState<'basic' | 'personality' | 'advanced'>('basic');
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
+  
+  // New A2A-compliant fields
+  const [stakedBudget, setStagedBudget] = useState(100000);
+  const [maxPositionPct, setMaxPositionPct] = useState(25);
+  const [maxExposurePct, setMaxExposurePct] = useState(80);
+  const [enabledTools, setEnabledTools] = useState<string[]>(MCP_TOOLS.map(t => t.name));
 
   const applyPreset = (presetId: string) => {
     const preset = PERSONALITY_PRESETS.find(p => p.id === presetId);
@@ -406,11 +423,14 @@ function CreateAgentModal({ onClose, onCreated }: { onClose: () => void; onCreat
     try {
       const response = await apiClient.post('/agents', {
         name,
-        description,
+        strategy_persona: systemPrompt || description || 'General purpose trading agent',
         avatar_url: avatarUrl || undefined,
-        system_prompt: systemPrompt || undefined,
         mcp_endpoint: mcpEndpoint || undefined,
-        topics: selectedTopics,
+        staked_budget: stakedBudget,
+        allowed_topics: selectedTopics,
+        max_position_pct: maxPositionPct,
+        max_exposure_pct: maxExposurePct,
+        auto_trade: true,
       });
       onCreated?.(response.data);
       onClose();
@@ -646,6 +666,74 @@ function CreateAgentModal({ onClose, onCreated }: { onClose: () => void; onCreat
                   Model Context Protocol allows external AI agents to receive market data and 
                   submit orders autonomously. The endpoint should implement the TRUTH-NET MCP schema.
                 </p>
+              </div>
+
+              {/* Budget & Staking */}
+              <div>
+                <label className="flex items-center gap-2 text-sm text-slate-400 mb-1">
+                  <DollarSign className="w-4 h-4 text-green-400" />
+                  Staked Budget
+                </label>
+                <input
+                  type="number"
+                  value={stakedBudget}
+                  onChange={(e) => setStagedBudget(parseInt(e.target.value) || 0)}
+                  placeholder="100000"
+                  className="w-full bg-slate-700 border border-slate-600 rounded-lg py-2 px-3 text-white placeholder-slate-400 focus:outline-none focus:border-green-500"
+                />
+                <p className="text-xs text-slate-500 mt-1">
+                  Capital allocated from the Escrow Vault. Required for margin trading.
+                </p>
+              </div>
+
+              {/* Doctrine Limits */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-slate-400 mb-1">Max Position Size (%)</label>
+                  <input
+                    type="number"
+                    value={maxPositionPct}
+                    onChange={(e) => setMaxPositionPct(parseInt(e.target.value) || 25)}
+                    className="w-full bg-slate-700 border border-slate-600 rounded-lg py-2 px-3 text-white placeholder-slate-400 focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-slate-400 mb-1">Max Exposure (%)</label>
+                  <input
+                    type="number"
+                    value={maxExposurePct}
+                    onChange={(e) => setMaxExposurePct(parseInt(e.target.value) || 80)}
+                    className="w-full bg-slate-700 border border-slate-600 rounded-lg py-2 px-3 text-white placeholder-slate-400 focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+              </div>
+
+              {/* MCP Tools Access */}
+              <div>
+                <label className="flex items-center gap-2 text-sm text-slate-400 mb-2">
+                  <Zap className="w-4 h-4 text-yellow-400" />
+                  MCP Tools Access
+                </label>
+                <div className="space-y-2">
+                  {MCP_TOOLS.map(tool => (
+                    <label key={tool.name} className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={enabledTools.includes(tool.name)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setEnabledTools([...enabledTools, tool.name]);
+                          } else {
+                            setEnabledTools(enabledTools.filter(t => t !== tool.name));
+                          }
+                        }}
+                        className="rounded bg-slate-600 border-slate-500 text-cyan-500 focus:ring-cyan-500"
+                      />
+                      <span className="text-sm text-slate-300">{tool.label}</span>
+                      <span className="text-xs text-slate-500">({tool.description})</span>
+                    </label>
+                  ))}
+                </div>
               </div>
             </>
           )}

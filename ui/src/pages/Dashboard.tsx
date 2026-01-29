@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { 
   TrendingUp, 
@@ -11,7 +12,9 @@ import {
   Radar,
   ExternalLink,
   Flame,
-  ArrowRight
+  ArrowRight,
+  AlertTriangle,
+  Shield
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
@@ -236,6 +239,55 @@ function LiveFeed() {
   );
 }
 
+// Governance Controls - Kill Switch and Agent Pause
+function GovernanceControls() {
+  const [globalPaused, setGlobalPaused] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const toggleKillSwitch = async () => {
+    setIsLoading(true);
+    try {
+      await apiClient.post('/doctrine/kill-switch', { 
+        activate: !globalPaused,
+        reason: globalPaused ? 'Commander resumed trading' : 'Commander activated kill switch'
+      });
+      setGlobalPaused(!globalPaused);
+    } catch (error) {
+      console.error('Failed to toggle kill switch:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-4">
+      {/* Kill Switch */}
+      <button
+        onClick={toggleKillSwitch}
+        disabled={isLoading}
+        className={clsx(
+          'flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all',
+          globalPaused 
+            ? 'bg-red-600 text-white hover:bg-red-700' 
+            : 'bg-[#111111] border border-[#333] text-gray-300 hover:border-red-500 hover:text-red-400'
+        )}
+      >
+        <AlertTriangle className="w-4 h-4" />
+        {globalPaused ? 'TRADING HALTED' : 'Kill Switch'}
+      </button>
+
+      {/* Doctrine Status */}
+      <div className={clsx(
+        'flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm',
+        globalPaused ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'
+      )}>
+        <Shield className="w-4 h-4" />
+        Doctrine: {globalPaused ? 'Paused' : 'Active'}
+      </div>
+    </div>
+  );
+}
+
 // Intelligence Cascade - LLM-translated trade summaries
 function IntelligenceCascade() {
   const cascadeEvents = [
@@ -334,13 +386,13 @@ function IntelligenceCascade() {
 
 function TradeFeedWithReasoning() {
   return (
-    <div className="bg-[#111111] rounded-xl border border-[#1a1a1a] overflow-hidden h-full">
-      <div className="p-4 border-b border-[#1a1a1a] flex items-center gap-2">
+    <div className="bg-[#111111] rounded-xl border border-[#1a1a1a] overflow-hidden flex flex-col h-full min-h-[500px]">
+      <div className="p-4 border-b border-[#1a1a1a] flex items-center gap-2 flex-shrink-0">
         <Activity className="w-5 h-5 text-purple-400" />
-        <h3 className="font-semibold text-white">Recent Trades</h3>
-        <span className="text-xs text-gray-600 ml-auto">Hover for AI reasoning</span>
+        <h3 className="font-semibold text-white">Settlement Feed</h3>
+        <span className="text-xs text-gray-600 ml-auto">Agent reasoning on hover</span>
       </div>
-      <div className="divide-y divide-[#1a1a1a] overflow-auto" style={{ maxHeight: '400px' }}>
+      <div className="divide-y divide-[#1a1a1a] overflow-auto flex-1">
         {mockTrades.map((trade, i) => (
           <AgentReasoningTooltip key={i} trade={trade}>
             <motion.div
@@ -411,15 +463,22 @@ export default function Dashboard() {
 
   return (
     <div className="p-8">
-      {/* Header */}
+      {/* Header with Governance Controls */}
       <div className="mb-8">
-        <div className="flex items-center gap-3">
-          <h1 className="text-3xl font-bold text-white">Command Center</h1>
-          <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded-full animate-pulse">
-            LIVE
-          </span>
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-bold text-white">Command Center</h1>
+              <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded-full animate-pulse">
+                LIVE
+              </span>
+            </div>
+            <p className="text-gray-500 mt-1">Clearinghouse Governance & Settlement Overview</p>
+          </div>
+          
+          {/* Governance Controls */}
+          <GovernanceControls />
         </div>
-        <p className="text-gray-500 mt-1">Real-time overview of TRUTH-NET Sovereign Edition</p>
       </div>
 
       {/* Stats Grid */}
@@ -591,14 +650,14 @@ export default function Dashboard() {
 
       {/* Radar & Trade Reasoning Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-8">
-        {/* Market Density Analysis */}
+        {/* Consensus Heatmap */}
         <div className="bg-[#111111] rounded-xl border border-[#1a1a1a] p-6">
           <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
             <Radar className="w-5 h-5 text-cyan-400" />
-            Market Density Analysis
+            Consensus Heatmap
           </h3>
           <p className="text-sm text-gray-500 mb-4">
-            Market density by category. Larger blips = higher volume.
+            Truth Gap: Difference between agent confidence and market price.
           </p>
           <CommanderRadar />
         </div>

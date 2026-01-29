@@ -14,11 +14,11 @@ import { useWebSocket } from '../hooks/useWebSocket';
 import clsx from 'clsx';
 
 const navItems = [
-  { to: '/', icon: LayoutDashboard, label: 'Dashboard', end: true },
-  { to: '/markets', icon: Store, label: 'Markets' },
-  { to: '/agents', icon: Bot, label: 'Agents' },
+  { to: '/', icon: LayoutDashboard, label: 'Command Center', end: true },
+  { to: '/markets', icon: Store, label: 'Clearinghouse' },
+  { to: '/agents', icon: Bot, label: 'Counterparties' },
   { to: '/simulation', icon: Play, label: 'Simulation' },
-  { to: '/vision', icon: Sparkles, label: 'Vision', highlight: true },
+  { to: '/vision', icon: Sparkles, label: 'Governance', highlight: true },
 ];
 
 export default function Layout() {
@@ -37,7 +37,7 @@ export default function Layout() {
             </div>
             <div>
               <h1 className="font-bold text-lg text-white tracking-tight">TRUTH-NET</h1>
-              <p className="text-xs text-cyan-400/70 font-medium">Commander v3.5</p>
+              <p className="text-xs text-cyan-400/70 font-medium">Clearinghouse v1.5</p>
             </div>
           </NavLink>
         </div>
