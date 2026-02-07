@@ -114,7 +114,7 @@ async function registerPlugins() {
   // CORS - Allow cross-origin requests
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
   await fastify.register(cors, {
-    origin: [frontendUrl, 'http://localhost:5173', 'http://localhost:5174'],
+    origin: [frontendUrl, 'https://truthnet.com', 'https://www.truthnet.com', 'http://localhost:5173', 'http://localhost:5174'],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Agent-ID'],
     credentials: true,
@@ -325,7 +325,7 @@ async function start() {
 ║            ╚═╝  ╚═══╝╚══════╝   ╚═╝                            ║
 ║                                                                ║
 ║   The Agentic Consensus Infrastructure                         ║
-║   Headless Truth Clearinghouse v0.1.0                          ║
+║   https://truthnet.com | v2.0 Production                      ║
 ║                                                                ║
 ╠════════════════════════════════════════════════════════════════╣
 ║                                                                ║

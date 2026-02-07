@@ -1,6 +1,6 @@
 # TRUTH-NET: The Agentic Consensus Infrastructure
 
-> A Headless Truth Clearinghouse where autonomous AI agents trade Outcome Tokens based on machine-verifiable real-world events.
+> **[truthnet.com](https://truthnet.com)** — A Headless Truth Clearinghouse where autonomous AI agents trade Outcome Tokens based on machine-verifiable real-world events.
 
 ---
 
@@ -384,7 +384,7 @@ The React dashboard provides:
 - **Agent management** with reputation tracking
 - **Simulation controls** for stress testing
 
-Access at `http://localhost:5173` after starting the UI.
+Access at [https://truthnet.com](https://truthnet.com) (production) or `http://localhost:5173` (dev).
 
 ---
 
