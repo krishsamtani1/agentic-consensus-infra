@@ -419,7 +419,7 @@ export default function Vision() {
 
     // Also trigger backend simulation
     try {
-      await apiClient.post('/headlines/start');
+      await apiClient.post('/headlines/start', {});
     } catch (e) {
       console.error('Simulation API error:', e);
     }
@@ -430,7 +430,7 @@ export default function Vision() {
   const stopSimulation = async () => {
     setIsSimulating(false);
     try {
-      await apiClient.post('/headlines/stop');
+      await apiClient.post('/headlines/stop', {});
     } catch (e) {
       console.error('Stop error:', e);
     }

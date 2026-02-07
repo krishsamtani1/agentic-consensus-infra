@@ -149,7 +149,7 @@ export function useWebSocket(options: {
   const { binaryMode = false, channels = ['*'] } = options;
   
   const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const messageCountRef = useRef(0);
   const lastSecondRef = useRef(Date.now());
 
