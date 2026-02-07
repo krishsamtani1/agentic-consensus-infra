@@ -27,7 +27,8 @@ export default function TickerTape() {
       const response = await apiClient.get<{ markets: Market[]; total: number }>('/markets?limit=50');
       return response;
     },
-    refetchInterval: 3000,
+    staleTime: 30_000,
+    refetchInterval: 30_000,
   });
 
   const markets = marketsData?.markets || [];

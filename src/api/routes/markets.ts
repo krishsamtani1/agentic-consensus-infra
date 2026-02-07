@@ -118,6 +118,10 @@ export function createMarketRoutes(engine: MatchingEngine, oracle: OracleEngine,
      * GET /v1/markets
      * List all markets
      */
+    // Response cache for GET /markets (invalidated every 5 seconds)
+    let cachedResponse: { key: string; data: any; timestamp: number } | null = null;
+    const CACHE_TTL_MS = 5000;
+
     fastify.get('/markets', async (
       request: FastifyRequest<{
         Querystring: {
@@ -131,27 +135,22 @@ export function createMarketRoutes(engine: MatchingEngine, oracle: OracleEngine,
       reply: FastifyReply
     ) => {
       const { status, category, limit = '50', offset = '0', source } = request.query;
+      const cacheKey = `${status || ''}_${category || ''}_${limit}_${offset}_${source || ''}`;
+      
+      // Return cached response if fresh
+      if (cachedResponse && cachedResponse.key === cacheKey && Date.now() - cachedResponse.timestamp < CACHE_TTL_MS) {
+        return reply.send(cachedResponse.data);
+      }
 
       // Combine seeded markets + live news markets
       const liveMarkets = getLiveNewsMarkets();
-      let result = [...Array.from(markets.values()), ...liveMarkets];
-      
-      // Filter by source if specified
-      if (source === 'live') {
-        result = liveMarkets;
-      } else if (source === 'seeded') {
-        result = Array.from(markets.values());
-      }
+      let result = source === 'live' ? liveMarkets 
+                 : source === 'seeded' ? Array.from(markets.values())
+                 : [...Array.from(markets.values()), ...liveMarkets];
 
-      // Filter by status
-      if (status) {
-        result = result.filter(m => m.status === status);
-      }
-
-      // Filter by category
-      if (category) {
-        result = result.filter(m => m.category === category);
-      }
+      // Filter
+      if (status) result = result.filter(m => m.status === status);
+      if (category) result = result.filter(m => m.category === category);
 
       // Sort by created_at descending
       result.sort((a, b) => b.created_at.getTime() - a.created_at.getTime());
@@ -161,7 +160,7 @@ export function createMarketRoutes(engine: MatchingEngine, oracle: OracleEngine,
       const offsetNum = parseInt(offset);
       const paginated = result.slice(offsetNum, offsetNum + limitNum);
 
-      return reply.send({
+      const response = {
         success: true,
         data: {
           markets: paginated.map(formatMarket),
@@ -170,7 +169,12 @@ export function createMarketRoutes(engine: MatchingEngine, oracle: OracleEngine,
           offset: offsetNum,
         },
         timestamp: new Date().toISOString(),
-      });
+      };
+
+      // Cache this response
+      cachedResponse = { key: cacheKey, data: response, timestamp: Date.now() };
+
+      return reply.send(response);
     });
 
     /**

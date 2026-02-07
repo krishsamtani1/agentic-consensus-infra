@@ -173,16 +173,39 @@ export function createLiveNewsRoutes(eventBus: EventBus) {
 /**
  * Generate a tradable market from a headline
  */
+/**
+ * Clean HTML entities from text
+ */
+function cleanHtmlEntities(text: string): string {
+  return text
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)))
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function generateMarketFromHeadline(headline: any): Market | null {
   const now = new Date();
   const closesAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days
   const resolvesAt = new Date(closesAt.getTime() + 60 * 60 * 1000);
 
+  // Clean up the headline title first
+  const cleanTitle = cleanHtmlEntities(headline.title);
+
   // Generate question from headline
-  const question = generateQuestion(headline.title, headline.category);
+  const question = generateQuestion(cleanTitle, headline.category);
   if (!question) return null;
 
-  const ticker = generateTicker(headline.category, headline.title);
+  // Also clean the question output just in case
+  const cleanQuestion = cleanHtmlEntities(question);
+
+  const ticker = generateTicker(headline.category, cleanTitle);
 
   const resolutionSchema: HttpJsonResolutionSchema = {
     type: 'http_json',
@@ -201,8 +224,8 @@ function generateMarketFromHeadline(headline: any): Market | null {
   return {
     id: uuidv4(),
     ticker,
-    title: question,
-    description: `**${headline.title}**\n\n${headline.summary || 'No summary available.'}\n\n**Source:** ${headline.source}\n**Category:** ${headline.category}`,
+    title: cleanQuestion,
+    description: `**${cleanTitle}**\n\n${cleanHtmlEntities(headline.summary || 'No summary available.')}\n\n**Source:** ${headline.source}\n**Category:** ${headline.category}`,
     resolution_schema: resolutionSchema,
     opens_at: now,
     closes_at: closesAt,
@@ -233,128 +256,194 @@ function generateMarketFromHeadline(headline: any): Market | null {
 }
 
 /**
- * Generate a UNIQUE, BINARY, and VERIFIABLE question from headline
- * No more "7-day significance" boilerplate - each question is specific and measurable
+ * Generate a SPECIFIC, BINARY question directly from the headline content.
+ * Every question must reference the actual subject matter of the headline.
+ * No generic templates - the question should make sense as a standalone market.
  */
 function generateQuestion(title: string, category: string): string | null {
-  const lower = title.toLowerCase();
-  const shortTitle = title.slice(0, 60);
+  // Clean up the title - remove HTML entities, trim
+  const clean = title
+    .replace(/&#\d+;/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // Skip garbage headlines - aggressive filtering for quality
+  if (clean.length < 20 || clean.length > 200) return null;
+  if (/^(show hn|ask hn|tell hn|daily|weekly|thread|update|moons? update|spc -)/i.test(clean)) return null;
+  if (/best .+ (2024|2025|2026)|review|tested|our .+ would/i.test(clean)) return null;
+  if (/^\d+ best|top \d+|^the \d+ best/i.test(clean)) return null;
+  if (/\bAMA\b|ask me anything|daily discussion|live thread/i.test(clean)) return null;
+  if (/^(hi!|hello|hey|welcome)\s/i.test(clean)) return null;
+  if (/no watches are valid|no warnings|no advisories/i.test(clean)) return null;
+  if (/discount|coupon|deal of|sale|promo|tested and reviewed/i.test(clean)) return null;
+  if (/\b(giveaway|sweepstake|contest)\b/i.test(clean)) return null;
+  if (/^opinion:|^editorial:|^letter:/i.test(clean)) return null;
+  if (/would feel less gimmicky|scatterbrain/i.test(clean)) return null;
+
+  // Extract key entities from headline
+  const subject = extractSubject(clean);
+  if (!subject) return null;
+
+  const lower = clean.toLowerCase();
 
   // =========================================================================
-  // LOGISTICS & SUPPLY CHAIN - Verifiable via MarineTraffic, port APIs
+  // Generate question based on the actual content
   // =========================================================================
-  if (category === 'logistics') {
-    if (lower.includes('port') || lower.includes('shipping')) {
-      return `Will port throughput exceed 95% capacity within 72 hours?`;
-    }
-    if (lower.includes('tariff')) {
-      return `Will the tariff mentioned be implemented before Feb 15, 2026?`;
-    }
-    if (lower.includes('delay') || lower.includes('disrupt')) {
-      return `Will shipping delays exceed 48 hours on affected routes?`;
-    }
-    if (lower.includes('strike') || lower.includes('labor')) {
-      return `Will labor action result in >24hr work stoppage?`;
-    }
-    return `Will logistics KPIs for this region decline >5% within 14 days?`;
+
+  // Person/entity doing something
+  if (lower.includes('announces') || lower.includes('announced')) {
+    return `Will ${subject} follow through on this announcement within 30 days?`;
+  }
+  if (lower.includes('plans') || lower.includes('planning') || lower.includes('preparing') || lower.includes('preps')) {
+    return `Will ${subject} execute on these plans within 60 days?`;
+  }
+  if (lower.includes('threatens') || lower.includes('threat')) {
+    return `Will ${subject} act on this threat within 30 days?`;
+  }
+  if (lower.includes('launches') || lower.includes('launch') || lower.includes('releases') || lower.includes('drops')) {
+    return `Will the ${subject} launch be commercially successful (positive reception)?`;
+  }
+  if (lower.includes('raises') || lower.includes('funding') || lower.includes('investment')) {
+    return `Will ${subject} close this funding round within 60 days?`;
+  }
+  if (lower.includes('acquires') || lower.includes('acquisition') || lower.includes('merger') || lower.includes('buys')) {
+    return `Will the ${subject} acquisition/deal close by Q2 2026?`;
+  }
+  if (lower.includes('files') || lower.includes('lawsuit') || lower.includes('sues') || lower.includes('legal')) {
+    return `Will ${subject} win this legal challenge?`;
   }
 
-  // =========================================================================
-  // TECH & EARNINGS - Verifiable via GitHub, SEC filings, press releases
-  // =========================================================================
-  if (category === 'tech-earnings') {
-    if (lower.includes('ai') || lower.includes('openai') || lower.includes('claude') || lower.includes('gpt')) {
-      return `Will the AI development mentioned ship to production within 30 days?`;
-    }
-    if (lower.includes('funding') || lower.includes('raises') || lower.includes('valuation')) {
-      return `Will this funding round close at announced valuation?`;
-    }
-    if (lower.includes('layoff') || lower.includes('cut')) {
-      return `Will announced layoffs exceed 500 employees?`;
-    }
-    if (lower.includes('hack') || lower.includes('breach') || lower.includes('vulnerability')) {
-      return `Will affected users exceed 1 million?`;
-    }
-    if (lower.includes('launch') || lower.includes('release')) {
-      return `Will product launch occur within stated timeline?`;
-    }
-    return `Will this tech development result in stock movement >3%?`;
+  // Conflict / geopolitics
+  if (lower.includes('war') || lower.includes('invasion') || lower.includes('strikes') || lower.includes('attack')) {
+    return `Will the ${subject} conflict escalate further within 14 days?`;
+  }
+  if (lower.includes('ceasefire') || lower.includes('peace') || lower.includes('truce') || lower.includes('negotiate')) {
+    return `Will ${subject} peace negotiations produce an agreement within 30 days?`;
+  }
+  if (lower.includes('sanction') || lower.includes('embargo') || lower.includes('ban')) {
+    return `Will ${subject} sanctions be implemented within 30 days?`;
+  }
+  if (lower.includes('election') || lower.includes('vote') || lower.includes('poll')) {
+    return `Will the leading candidate in ${subject} win the election?`;
+  }
+  if (lower.includes('tariff') || lower.includes('trade war') || lower.includes('duties')) {
+    return `Will ${subject} tariffs take effect as announced?`;
   }
 
-  // =========================================================================
-  // WEATHER - Verifiable via NOAA, Weather.gov
-  // =========================================================================
-  if (category === 'weather') {
-    if (lower.includes('hurricane') || lower.includes('tropical')) {
-      return `Will storm reach Category 3+ intensity before landfall?`;
-    }
-    if (lower.includes('snow') || lower.includes('blizzard') || lower.includes('winter')) {
-      return `Will snowfall accumulation exceed 12 inches in metro areas?`;
-    }
-    if (lower.includes('tornado') || lower.includes('severe')) {
-      return `Will tornado warnings be issued for the affected region?`;
-    }
-    if (lower.includes('flood') || lower.includes('rain')) {
-      return `Will flood warnings remain in effect >48 hours?`;
-    }
-    return `Will this weather event cause >$100M in damage?`;
+  // Tech / AI specific
+  if (lower.includes('gpt') || lower.includes('openai') || lower.includes('claude') || lower.includes('anthropic') || lower.includes('gemini')) {
+    return `Will ${subject} ship to general availability within 60 days?`;
+  }
+  if (lower.includes('hack') || lower.includes('breach') || lower.includes('vulnerability') || lower.includes('malicious')) {
+    return `Will ${subject} affect more than 100,000 users?`;
+  }
+  if (lower.includes('ipo') || lower.includes('goes public') || lower.includes('listing')) {
+    return `Will ${subject} IPO price above initial range?`;
   }
 
-  // =========================================================================
-  // GEOPOLITICS - Verifiable via Reuters, government sources
-  // =========================================================================
-  if (category === 'geopolitics') {
-    if (lower.includes('election') || lower.includes('vote')) {
-      return `Will election results be certified within legal deadline?`;
-    }
-    if (lower.includes('sanction')) {
-      return `Will sanctions be formally enacted within 30 days?`;
-    }
-    if (lower.includes('treaty') || lower.includes('agreement') || lower.includes('deal')) {
-      return `Will agreement be ratified by all parties?`;
-    }
-    if (lower.includes('conflict') || lower.includes('war') || lower.includes('military')) {
-      return `Will military action occur in the mentioned region within 14 days?`;
-    }
-    if (lower.includes('protest') || lower.includes('demonstration')) {
-      return `Will protests exceed 100,000 participants?`;
-    }
-    return `Will diplomatic resolution be reached within 30 days?`;
+  // Crypto
+  if (lower.includes('bitcoin') || lower.includes('btc')) {
+    return `Will Bitcoin move >5% within 48 hours of ${subject}?`;
+  }
+  if (lower.includes('ethereum') || lower.includes('eth') || lower.includes('crypto') || lower.includes('defi')) {
+    return `Will ${subject} cause crypto market cap to shift >3%?`;
+  }
+  if (lower.includes('liquidat') || lower.includes('whale')) {
+    return `Will ${subject} trigger further cascading liquidations?`;
   }
 
-  // =========================================================================
-  // NICHE INTERNET - Verifiable via social metrics, blockchain explorers
-  // =========================================================================
-  if (category === 'niche-internet') {
-    if (lower.includes('bitcoin') || lower.includes('btc') || lower.includes('crypto')) {
-      return `Will BTC price move >5% within 48 hours of this news?`;
-    }
-    if (lower.includes('ethereum') || lower.includes('eth')) {
-      return `Will ETH gas fees exceed 100 gwei within 24 hours?`;
-    }
-    if (lower.includes('viral') || lower.includes('trending')) {
-      return `Will this trend reach #1 on Twitter/X within 24 hours?`;
-    }
-    if (lower.includes('reddit') || lower.includes('subreddit')) {
-      return `Will this post reach >10,000 upvotes?`;
-    }
-    if (lower.includes('meme') || lower.includes('token')) {
-      return `Will meme token market cap exceed $100M within 7 days?`;
-    }
-    return `Will this internet event generate >1M social impressions?`;
+  // Weather / climate
+  if (lower.includes('hurricane') || lower.includes('tropical') || lower.includes('storm')) {
+    return `Will ${subject} reach Category 3+ intensity?`;
+  }
+  if (lower.includes('earthquake') || lower.includes('tsunami')) {
+    return `Will ${subject} cause >$1B in damage?`;
+  }
+  if (lower.includes('wildfire') || lower.includes('fire') || lower.includes('drought')) {
+    return `Will ${subject} force evacuation of >10,000 people?`;
   }
 
-  // =========================================================================
-  // FALLBACK - Still specific and measurable
-  // =========================================================================
-  const fallbacks = [
-    `Will mainstream media coverage of "${shortTitle}" exceed 100 articles?`,
-    `Will Google search interest for this topic increase >200%?`,
-    `Will this event be referenced in official government statement?`,
-    `Will stock markets in affected sector move >2% in response?`,
-  ];
-  
-  return fallbacks[Math.floor(Math.random() * fallbacks.length)];
+  // Shipping / logistics
+  if (lower.includes('port') || lower.includes('canal') || lower.includes('shipping') || lower.includes('freight')) {
+    return `Will ${subject} cause shipping delays exceeding 72 hours?`;
+  }
+  if (lower.includes('supply chain') || lower.includes('shortage') || lower.includes('disruption')) {
+    return `Will ${subject} impact consumer prices within 30 days?`;
+  }
+
+  // Sports / entertainment
+  if (lower.includes('championship') || lower.includes('finals') || lower.includes('super bowl') || lower.includes('world cup')) {
+    return `Will the favored team/player win ${subject}?`;
+  }
+  if (lower.includes('record') || lower.includes('milestone') || lower.includes('historic')) {
+    return `Will ${subject} set a new record?`;
+  }
+
+  // Economy / markets
+  if (lower.includes('fed') || lower.includes('rate') || lower.includes('inflation') || lower.includes('gdp')) {
+    return `Will ${subject} cause S&P 500 to move >1% in a session?`;
+  }
+  if (lower.includes('layoff') || lower.includes('job cuts') || lower.includes('downsizing')) {
+    return `Will ${subject} layoffs exceed initial reports?`;
+  }
+  if (lower.includes('profit') || lower.includes('revenue') || lower.includes('earnings')) {
+    return `Will ${subject} beat analyst expectations?`;
+  }
+
+  // Generic but still specific to the headline
+  if (subject.length > 10 && subject.length < 80) {
+    const templates = [
+      `Will "${subject}" resolve positively within 30 days?`,
+      `Will ${subject} lead to major policy changes?`,
+      `Will ${subject} still be in the news cycle in 7 days?`,
+      `Will ${subject} have measurable economic impact (>0.1% GDP)?`,
+    ];
+    return templates[Math.floor(Math.random() * templates.length)];
+  }
+
+  return null; // Skip headlines we can't make a good question from
+}
+
+/**
+ * Extract the core subject from a headline for use in questions.
+ * Returns a clean, readable subject phrase.
+ */
+function extractSubject(title: string): string | null {
+  // Remove common prefixes
+  let clean = title
+    .replace(/^(breaking:|update:|exclusive:|report:|watch:|opinion:|analysis:)\s*/i, '')
+    .replace(/^(the|a|an)\s+/i, '')
+    .trim();
+
+  // If it's a quote-style headline ("X says Y"), extract the key part
+  const saysMatch = clean.match(/^(.+?)\s+(says?|claims?|warns?|announces?|reveals?|declares?)\s+(.+)/i);
+  if (saysMatch) {
+    // Use the person/entity + what they said
+    const who = saysMatch[1].trim();
+    const what = saysMatch[3].trim().slice(0, 50);
+    return `${who}: "${what}"`;
+  }
+
+  // If it's an action headline ("X does Y"), use first ~60 chars
+  if (clean.length > 80) {
+    // Try to cut at a natural break point
+    const cutPoints = [' - ', ' — ', ' | ', ': ', ', '];
+    for (const cut of cutPoints) {
+      const idx = clean.indexOf(cut);
+      if (idx > 15 && idx < 80) {
+        clean = clean.slice(0, idx);
+        break;
+      }
+    }
+    if (clean.length > 80) clean = clean.slice(0, 75) + '...';
+  }
+
+  if (clean.length < 10) return null;
+  return clean;
 }
 
 /**
@@ -367,6 +456,11 @@ function generateTicker(category: string, title: string): string {
     'weather': 'WX',
     'geopolitics': 'GEO',
     'niche-internet': 'NET',
+    'economics': 'ECON',
+    'crypto': 'CRYPT',
+    'sports': 'SPORT',
+    'health': 'HLTH',
+    'science': 'SCI',
   };
 
   const prefix = categoryPrefix[category] || 'GEN';

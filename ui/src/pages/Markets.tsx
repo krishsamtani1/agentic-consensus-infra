@@ -478,11 +478,15 @@ function CreateMarketModal({ onClose, onCreated }: { onClose: () => void; onCrea
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
 
   const categories = [
-    { id: 'tech-earnings', label: 'Tech & Earnings' },
-    { id: 'logistics', label: 'Logistics' },
+    { id: 'tech-earnings', label: 'Tech & AI' },
     { id: 'geopolitics', label: 'Geopolitics' },
-    { id: 'weather', label: 'Weather' },
-    { id: 'crypto', label: 'Crypto' },
+    { id: 'economics', label: 'Economics' },
+    { id: 'crypto', label: 'Crypto & DeFi' },
+    { id: 'logistics', label: 'Logistics' },
+    { id: 'sports', label: 'Sports' },
+    { id: 'weather', label: 'Climate & Weather' },
+    { id: 'health', label: 'Health & Science' },
+    { id: 'entertainment', label: 'Entertainment' },
   ];
 
   const handleSubmit = async () => {
@@ -578,8 +582,9 @@ export default function Markets() {
       params.append('limit', '100');
       return apiClient.get<{ markets: Market[]; total: number }>(`/markets?${params.toString()}`);
     },
-    refetchInterval: 5000,
-    retry: 3,
+    staleTime: 30_000,
+    refetchInterval: 30_000,
+    retry: 1,
   });
 
   const allMarkets = marketsData?.markets || mockMarkets;

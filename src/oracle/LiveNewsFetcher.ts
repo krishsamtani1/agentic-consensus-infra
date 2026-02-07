@@ -34,7 +34,12 @@ export type HeadlineCategory =
   | 'tech-earnings'
   | 'weather'
   | 'geopolitics'
-  | 'niche-internet';
+  | 'niche-internet'
+  | 'economics'
+  | 'crypto'
+  | 'sports'
+  | 'health'
+  | 'science';
 
 export interface RSSFeedConfig {
   url: string;
@@ -144,8 +149,8 @@ const DEFAULT_RSS_FEEDS: RSSFeedConfig[] = [
   // GEOPOLITICS & WORLD NEWS
   // =========================================================================
   {
-    url: 'https://feeds.reuters.com/Reuters/worldNews',
-    name: 'Reuters World',
+    url: 'https://feeds.reuters.com/reuters/topNews',
+    name: 'Reuters Top',
     category: 'geopolitics',
     keywords: ['trade', 'tariff', 'sanction', 'conflict'],
   },
@@ -194,6 +199,76 @@ const DEFAULT_RSS_FEEDS: RSSFeedConfig[] = [
     name: 'Reddit Crypto',
     category: 'niche-internet',
     keywords: ['bitcoin', 'crypto', 'ethereum'],
+  },
+
+  // =========================================================================
+  // ECONOMICS & FINANCE
+  // =========================================================================
+  {
+    url: 'https://feeds.bloomberg.com/markets/news.rss',
+    name: 'Bloomberg Markets',
+    category: 'economics',
+    keywords: ['markets', 'fed', 'economy', 'rates', 'stocks'],
+  },
+  {
+    url: 'https://www.cnbc.com/id/100003114/device/rss/rss.html',
+    name: 'CNBC Top News',
+    category: 'economics',
+    keywords: ['markets', 'economy', 'earnings', 'fed'],
+  },
+  {
+    url: 'https://feeds.marketwatch.com/marketwatch/topstories/',
+    name: 'MarketWatch',
+    category: 'economics',
+    keywords: ['stocks', 'markets', 'economy'],
+  },
+
+  // =========================================================================
+  // CRYPTO & WEB3
+  // =========================================================================
+  {
+    url: 'https://cointelegraph.com/rss',
+    name: 'CoinTelegraph',
+    category: 'crypto',
+    keywords: ['bitcoin', 'ethereum', 'defi', 'nft', 'regulation'],
+  },
+  {
+    url: 'https://www.coindesk.com/arc/outboundfeeds/rss/',
+    name: 'CoinDesk',
+    category: 'crypto',
+    keywords: ['bitcoin', 'crypto', 'blockchain', 'regulation'],
+  },
+
+  // =========================================================================
+  // SPORTS
+  // =========================================================================
+  {
+    url: 'https://www.espn.com/espn/rss/news',
+    name: 'ESPN',
+    category: 'sports',
+    keywords: ['nba', 'nfl', 'soccer', 'championship', 'record'],
+  },
+  {
+    url: 'https://rss.nytimes.com/services/xml/rss/nyt/Sports.xml',
+    name: 'NYT Sports',
+    category: 'sports',
+    keywords: ['sports', 'championship', 'olympics', 'record'],
+  },
+
+  // =========================================================================
+  // SCIENCE & HEALTH
+  // =========================================================================
+  {
+    url: 'https://rss.nytimes.com/services/xml/rss/nyt/Science.xml',
+    name: 'NYT Science',
+    category: 'science',
+    keywords: ['space', 'discovery', 'research', 'nasa', 'climate'],
+  },
+  {
+    url: 'https://www.statnews.com/feed/',
+    name: 'STAT News Health',
+    category: 'health',
+    keywords: ['fda', 'drug', 'vaccine', 'health', 'pharma'],
   },
 ];
 
@@ -312,15 +387,20 @@ async function fetchFromNewsAPI(
   query?: string
 ): Promise<LiveHeadline[]> {
   try {
-    const categoryMap: Record<HeadlineCategory, string> = {
+    const categoryMap: Partial<Record<HeadlineCategory, string>> = {
       'logistics': 'shipping OR freight OR "supply chain" OR port',
       'tech-earnings': 'technology OR AI OR "earnings report"',
       'weather': 'hurricane OR storm OR "extreme weather"',
       'geopolitics': 'trade war OR sanctions OR diplomacy',
       'niche-internet': 'viral OR trending OR "social media"',
+      'economics': 'federal reserve OR inflation OR GDP OR "stock market"',
+      'crypto': 'bitcoin OR ethereum OR "crypto regulation"',
+      'sports': 'championship OR "world cup" OR NBA OR NFL',
+      'health': 'FDA OR vaccine OR pandemic OR pharma',
+      'science': 'NASA OR SpaceX OR "climate change" OR discovery',
     };
 
-    const q = query || categoryMap[category];
+    const q = query || categoryMap[category] || category;
     const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(q)}&sortBy=publishedAt&pageSize=10&apiKey=${apiKey}`;
 
     const response = await fetch(url);
@@ -358,12 +438,17 @@ async function fetchFromGNews(
   category: HeadlineCategory
 ): Promise<LiveHeadline[]> {
   try {
-    const categoryMap: Record<HeadlineCategory, string> = {
+    const categoryMap: Partial<Record<HeadlineCategory, string>> = {
       'logistics': 'shipping OR port OR freight',
       'tech-earnings': 'technology',
       'weather': 'weather OR hurricane',
       'geopolitics': 'world',
       'niche-internet': 'technology',
+      'economics': 'economy OR markets',
+      'crypto': 'bitcoin OR crypto',
+      'sports': 'sports OR championship',
+      'health': 'health OR FDA',
+      'science': 'science OR space',
     };
 
     const q = categoryMap[category];

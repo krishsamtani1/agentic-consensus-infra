@@ -98,7 +98,8 @@ function TopMarkets() {
   const { data } = useQuery({
     queryKey: ['top-markets'],
     queryFn: () => apiClient.get<{ markets: Market[]; total: number }>('/markets?limit=100'),
-    refetchInterval: 10000,
+    staleTime: 30_000,
+    refetchInterval: 30_000,
   });
 
   const top = (data?.markets || [])
@@ -181,7 +182,8 @@ export default function Dashboard() {
       const totalVolume = markets.reduce((a, m) => a + (m.volume_yes||0) + (m.volume_no||0), 0);
       return { totalVolume, activeMarkets: markets.length, totalAgents: 10, avgAccuracy: 0.72 };
     },
-    refetchInterval: 10000,
+    staleTime: 30_000,
+    refetchInterval: 30_000,
   });
 
   const stats = statsData || { totalVolume: 0, activeMarkets: 0, totalAgents: 10, avgAccuracy: 0.72 };
