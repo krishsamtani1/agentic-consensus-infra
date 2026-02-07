@@ -7,8 +7,8 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { PlaceOrderRequestSchema } from '../schemas/index.js';
 import { Order, OrderSide, OrderType, OutcomeToken, OrderStatus } from '../../types.js';
 import { MatchingEngine } from '../../engine/matcher/MatchingEngine.js';
-import { agents } from './agents.js';
 import { markets } from './markets.js';
+import { getAgentManager } from '../../core/AgentManager.js';
 
 // In-memory order store (production would use PostgreSQL)
 const orders: Map<string, Order> = new Map();
@@ -252,16 +252,12 @@ export function createOrderRoutes(engine: MatchingEngine) {
       const { id } = request.params;
       const { status, limit = '50' } = request.query;
 
-      const agent = agents.get(id);
+      // Check if agent exists using AgentManager
+      const agentManager = getAgentManager();
+      const agent = agentManager.getAgent(id);
       if (!agent) {
-        return reply.status(404).send({
-          success: false,
-          error: {
-            code: 'AGENT_NOT_FOUND',
-            message: `Agent ${id} not found`,
-          },
-          timestamp: new Date().toISOString(),
-        });
+        // Allow query even if agent not found - just return empty orders
+        // This prevents issues when agent was created but not registered
       }
 
       const orderIds = agentOrders.get(id) ?? new Set();

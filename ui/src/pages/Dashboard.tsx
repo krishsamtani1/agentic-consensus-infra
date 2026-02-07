@@ -1,39 +1,47 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { 
-  TrendingUp, 
-  TrendingDown, 
-  Users, 
-  Activity,
-  DollarSign,
-  BarChart3,
-  Clock,
-  Zap,
-  Radar,
-  ExternalLink,
-  Flame,
-  ArrowRight,
-  AlertTriangle,
-  Shield
+  TrendingUp, TrendingDown, Users, Activity, DollarSign, BarChart3,
+  Zap, Radar, ArrowRight, AlertTriangle, Shield, Send, Terminal,
+  FileText, Clock, CheckCircle2, XCircle, AlertCircle, ChevronRight,
+  Flame, Target, Brain, Rocket, CreditCard, Bot, PieChart
 } from 'lucide-react';
-import { motion } from 'framer-motion';
-import { Link } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Link, useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
+import { 
+  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, 
+  AreaChart, Area, PieChart as RPieChart, Pie, Cell 
+} from 'recharts';
 import { useWebSocket } from '../hooks/useWebSocket';
+import { useAuth } from '../hooks/useAuth';
 import CommanderRadar from '../components/CommanderRadar';
-import { AgentReasoningTooltip, generateMockReasoning, TradeReasoning } from '../components/AgentReasoningTooltip';
 import { apiClient, Market } from '../api/client';
 
-// Mock data for the dashboard
-const mockStats = {
-  totalVolume: 1_234_567,
-  activeMarkets: 12,
-  totalAgents: 48,
-  avgTruthScore: 0.67,
-  tradesPerSecond: 42,
-  ordersInBook: 1_832,
-};
+// ============================================================================
+// TYPES
+// ============================================================================
+
+interface StrategicBrief {
+  id: string;
+  timestamp: Date;
+  type: 'position' | 'hedge' | 'alert' | 'settlement' | 'doctrine';
+  priority: 'critical' | 'high' | 'medium' | 'low';
+  agent: string;
+  agentAvatar: string;
+  action: string;
+  market: string;
+  marketTicker: string;
+  size: number;
+  summary: string;
+  reasoning: string;
+  confidence: number;
+  tags: string[];
+}
+
+// ============================================================================
+// MOCK DATA
+// ============================================================================
 
 const mockVolumeData = Array.from({ length: 24 }, (_, i) => ({
   hour: `${String(i).padStart(2, '0')}:00`,
@@ -41,634 +49,511 @@ const mockVolumeData = Array.from({ length: 24 }, (_, i) => ({
   trades: Math.floor(Math.random() * 100 + 20),
 }));
 
-const mockPriceData = Array.from({ length: 50 }, (_, i) => ({
-  tick: i,
-  yes: 0.5 + (Math.sin(i / 5) * 0.2) + (Math.random() - 0.5) * 0.1,
-  no: 0.5 - (Math.sin(i / 5) * 0.2) + (Math.random() - 0.5) * 0.1,
+const mockPnlData = Array.from({ length: 30 }, (_, i) => ({
+  day: `Day ${i + 1}`,
+  pnl: (Math.random() - 0.4) * 2000 + (i * 50),
+  cumulative: 0,
 }));
+// Calculate cumulative P&L
+let cumPnl = 0;
+mockPnlData.forEach(d => { cumPnl += d.pnl; d.cumulative = cumPnl; });
 
-interface StatCardProps {
-  title: string;
-  value: string | number;
-  icon: React.ElementType;
-  trend?: number;
-  color: string;
-}
+const mockPortfolioData = [
+  { name: 'Geopolitics', value: 35, color: '#06b6d4' },
+  { name: 'Tech & AI', value: 25, color: '#8b5cf6' },
+  { name: 'Crypto', value: 20, color: '#f59e0b' },
+  { name: 'Logistics', value: 12, color: '#10b981' },
+  { name: 'Weather', value: 8, color: '#ef4444' },
+];
 
-function StatCard({ title, value, icon: Icon, trend, color }: StatCardProps) {
+const mockBriefs: StrategicBrief[] = [
+  { id: 'b1', timestamp: new Date(Date.now() - 45000), type: 'position', priority: 'critical', agent: 'Geopolitical Analyst', agentAvatar: '🌍', action: 'LONG', market: 'US-China Trade Tensions', marketTicker: 'GEO-USCH-0129', size: 45000, summary: 'Opened $45K long on trade tensions after diplomatic signals indicate stalled negotiations.', reasoning: 'Reuters cables + satellite port activity down 12%.', confidence: 0.82, tags: ['#Geopolitics'] },
+  { id: 'b2', timestamp: new Date(Date.now() - 120000), type: 'hedge', priority: 'high', agent: 'Logistics Sentinel', agentAvatar: '🚢', action: 'HEDGE CLOSED', market: 'Panama Canal Delays', marketTicker: 'LOG-PANA-0129', size: 28000, summary: 'Closed Panama hedge at profit. AIS confirms queue normalization.', reasoning: 'Vessel queue 142→67. Water levels stabilized.', confidence: 0.91, tags: ['#Logistics'] },
+  { id: 'b3', timestamp: new Date(Date.now() - 300000), type: 'position', priority: 'high', agent: 'Tech Oracle', agentAvatar: '💻', action: 'ACCUMULATING', market: 'GPT-5 Q1 Release', marketTicker: 'TECH-GPT5', size: 18000, summary: 'Accumulating GPT-5 positions on GitHub commit velocity.', reasoning: '340% spike in semantic-kernel commits.', confidence: 0.73, tags: ['#AI-War'] },
+  { id: 'b4', timestamp: new Date(Date.now() - 600000), type: 'position', priority: 'medium', agent: 'Contrarian Alpha', agentAvatar: '🔄', action: 'SHORT', market: 'Bitcoin $100K Jan', marketTicker: 'CRYPTO-BTC', size: 55000, summary: 'Fading retail BTC hype on extreme Fear & Greed.', reasoning: 'Whale wallets reducing exposure 8%.', confidence: 0.67, tags: ['#Crypto'] },
+];
+
+// ============================================================================
+// GETTING STARTED WIDGET
+// ============================================================================
+
+function GettingStartedWidget() {
+  const { user, balance } = useAuth();
+  const navigate = useNavigate();
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    if (localStorage.getItem('truthnet_getting_started_dismissed') === 'true') {
+      setDismissed(true);
+    }
+  }, []);
+
+  if (dismissed) return null;
+
+  const hasFunds = (balance?.available ?? 0) > 0;
+  const steps = [
+    { id: 'fund', label: 'Fund your account', done: hasFunds, action: () => {}, icon: CreditCard },
+    { id: 'agent', label: 'Deploy an agent', done: false, action: () => navigate('/agents'), icon: Bot },
+    { id: 'trade', label: 'Place your first trade', done: false, action: () => navigate('/markets'), icon: TrendingUp },
+  ];
+
+  const handleDismiss = () => {
+    setDismissed(true);
+    localStorage.setItem('truthnet_getting_started_dismissed', 'true');
+  };
+
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="bg-[#111111] rounded-xl p-6 border border-[#1a1a1a] hover:border-cyan-500/30 transition-colors"
-    >
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-gray-500 text-sm font-medium">{title}</p>
-          <p className="text-2xl font-bold text-white mt-1 tabular-nums">{value}</p>
+    <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
+      className="bg-gradient-to-r from-cyan-500/10 via-blue-500/10 to-purple-500/10 border border-cyan-500/20 rounded-xl p-4 mb-6">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Rocket className="w-4 h-4 text-cyan-400" />
+          <span className="text-sm font-semibold text-white">Getting Started</span>
         </div>
-        <div className={`p-3 rounded-xl ${color}`}>
-          <Icon className="w-6 h-6 text-white" />
-        </div>
+        <button onClick={handleDismiss} className="text-xs text-gray-500 hover:text-gray-300">Dismiss</button>
       </div>
-      {trend !== undefined && (
-        <div className="mt-4 flex items-center gap-1">
-          {trend >= 0 ? (
-            <TrendingUp className="w-4 h-4 text-emerald-400" />
-          ) : (
-            <TrendingDown className="w-4 h-4 text-red-400" />
-          )}
-          <span className={trend >= 0 ? 'text-emerald-400' : 'text-red-400'}>
-            {Math.abs(trend).toFixed(1)}%
-          </span>
-          <span className="text-gray-600 text-sm ml-1">vs last hour</span>
-        </div>
-      )}
+      <div className="flex gap-4">
+        {steps.map((step, i) => (
+          <button key={step.id} onClick={step.action}
+            className={clsx('flex items-center gap-2 px-3 py-2 rounded-lg transition-all flex-1',
+              step.done ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-black/30 border border-[#1a1a1a] hover:border-cyan-500/30')}>
+            {step.done ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            ) : (
+              <step.icon className="w-4 h-4 text-gray-500" />
+            )}
+            <span className={clsx('text-xs', step.done ? 'text-emerald-400 line-through' : 'text-gray-300')}>{step.label}</span>
+          </button>
+        ))}
+      </div>
     </motion.div>
   );
 }
 
-// Top Markets Teaser Component
-function TopMarketsTeaser() {
-  const { data: marketsData, isLoading } = useQuery({
-    queryKey: ['top-markets'],
-    queryFn: async () => {
-      const response = await apiClient.get<{ markets: Market[]; total: number }>(
-        '/markets?limit=100'
-      );
-      return response;
-    },
+// ============================================================================
+// MARKET HEATMAP
+// ============================================================================
+
+function MarketHeatmap() {
+  const { data: marketsData } = useQuery({
+    queryKey: ['heatmap-markets'],
+    queryFn: () => apiClient.get<{ markets: Market[]; total: number }>('/markets?limit=20'),
     refetchInterval: 10000,
   });
 
-  // Sort by volume and take top 5
-  const topMarkets = (marketsData?.markets || [])
-    .sort((a, b) => ((b.volume_yes || 0) + (b.volume_no || 0)) - ((a.volume_yes || 0) + (a.volume_no || 0)))
-    .slice(0, 5);
-
-  if (isLoading) {
-    return (
-      <div className="bg-[#111111] rounded-xl border border-[#1a1a1a] p-6">
-        <div className="animate-pulse space-y-4">
-          <div className="h-6 bg-gray-800 rounded w-1/3" />
-          <div className="space-y-3">
-            {[1, 2, 3, 4, 5].map(i => (
-              <div key={i} className="h-16 bg-gray-800 rounded" />
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const markets = marketsData?.markets || [];
 
   return (
-    <div className="bg-[#111111] rounded-xl border border-[#1a1a1a] overflow-hidden">
-      <div className="p-4 border-b border-[#1a1a1a] flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Flame className="w-5 h-5 text-orange-400" />
-          <h3 className="font-semibold text-white">Hottest Markets</h3>
-          <span className="text-xs bg-orange-500/20 text-orange-400 px-2 py-0.5 rounded-full">LIVE</span>
-        </div>
-        <Link 
-          to="/markets" 
-          className="text-sm text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
-        >
-          View All <ArrowRight className="w-4 h-4" />
-        </Link>
+    <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <PieChart className="w-4 h-4 text-purple-400" />
+        <span className="font-medium text-white text-sm">Consensus Heatmap</span>
       </div>
-      <div className="divide-y divide-[#1a1a1a]">
-        {topMarkets.length === 0 ? (
-          <div className="p-8 text-center text-gray-500">
-            No markets available. Check your API connection.
-          </div>
-        ) : (
-          topMarkets.map((market, i) => {
-            const volume = (market.volume_yes || 0) + (market.volume_no || 0);
-            const yesPrice = market.last_price_yes ?? (market.volume_yes && market.volume_no 
-              ? market.volume_yes / (market.volume_yes + market.volume_no) 
-              : 0.5);
-            
-            return (
-              <motion.div
-                key={market.id}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: i * 0.05 }}
-                className="p-4 hover:bg-white/5 transition-colors"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500/20 to-blue-500/20 flex items-center justify-center text-cyan-400 font-bold text-sm">
-                    #{i + 1}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono text-gray-500">{market.ticker}</span>
-                      {market.category && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400">
-                          #{market.category}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-sm text-white truncate mt-0.5">{market.title}</p>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-500">YES</span>
-                      <span className={`text-lg font-bold font-mono ${yesPrice > 0.5 ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {(yesPrice * 100).toFixed(0)}¢
-                      </span>
-                    </div>
-                    <div className="text-xs text-gray-600">
-                      ${(volume / 1000).toFixed(1)}K vol
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-            );
-          })
-        )}
+      <div className="grid grid-cols-5 gap-1">
+        {(markets.length > 0 ? markets : Array.from({ length: 15 }, (_, i) => ({
+          id: String(i), ticker: `MKT-${i}`,
+          volume_yes: Math.random() * 100000, volume_no: Math.random() * 100000,
+        }))).slice(0, 15).map((m: any) => {
+          const totalVol = (m.volume_yes || 0) + (m.volume_no || 0);
+          const yesPct = totalVol > 0 ? (m.volume_yes || 0) / totalVol : 0.5;
+          const intensity = Math.abs(yesPct - 0.5) * 2; // 0 = split, 1 = consensus
+
+          return (
+            <div key={m.id} title={`${m.ticker}: ${(yesPct * 100).toFixed(0)}% YES`}
+              className="aspect-square rounded-md flex items-center justify-center cursor-pointer hover:ring-1 hover:ring-white/20 transition-all"
+              style={{
+                backgroundColor: yesPct > 0.5
+                  ? `rgba(16, 185, 129, ${0.15 + intensity * 0.5})`
+                  : `rgba(239, 68, 68, ${0.15 + intensity * 0.5})`,
+              }}>
+              <span className="text-[8px] font-mono text-white/60 truncate px-0.5">{m.ticker?.slice(0, 6)}</span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex items-center justify-between mt-2">
+        <span className="text-[9px] text-red-400">Bearish</span>
+        <span className="text-[9px] text-gray-600">50/50</span>
+        <span className="text-[9px] text-emerald-400">Bullish</span>
       </div>
     </div>
   );
 }
 
-// Mock recent trades with reasoning
-const mockTrades: TradeReasoning[] = [
-  generateMockReasoning('WeatherBot-Pro', 'agent1', 'buy', 'yes', 0.65, 500),
-  generateMockReasoning('LogisticsHedger', 'agent2', 'sell', 'yes', 0.62, 300),
-  generateMockReasoning('CloudOracle-v2', 'agent3', 'buy', 'no', 0.38, 750),
-  generateMockReasoning('MarketMaker-001', 'agent4', 'sell', 'no', 0.35, 1200),
-  generateMockReasoning('TechSentinel', 'agent5', 'buy', 'yes', 0.72, 200),
-];
+// ============================================================================
+// DOCTRINE CONTROL PLANE
+// ============================================================================
 
-function LiveFeed() {
-  const { messages } = useWebSocket();
-  const recentMessages = messages.slice(-10).reverse();
+function DoctrineControlPlane() {
+  const [mandate, setMandate] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [showRealignment, setShowRealignment] = useState(false);
+  const [affectedAgents, setAffectedAgents] = useState<string[]>([]);
 
-  return (
-    <div className="bg-[#111111] rounded-xl border border-[#1a1a1a] overflow-hidden h-full">
-      <div className="p-4 border-b border-[#1a1a1a] flex items-center gap-2">
-        <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-        <h3 className="font-semibold text-white">Live Activity Feed</h3>
-      </div>
-      <div className="divide-y divide-[#1a1a1a] max-h-80 overflow-auto">
-        {recentMessages.length === 0 ? (
-          <div className="p-8 text-gray-600 text-sm text-center">
-            Waiting for events...
-          </div>
-        ) : (
-          recentMessages.map((msg, i) => (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              className="p-3 hover:bg-white/5 transition-colors"
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-mono text-cyan-400">[{msg.channel}]</span>
-                <span className="text-sm text-white">{msg.event}</span>
-                <span className="text-xs text-gray-600 ml-auto">
-                  {new Date(msg.timestamp).toLocaleTimeString()}
-                </span>
-              </div>
-            </motion.div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
+  const submitMandate = async () => {
+    if (!mandate.trim()) return;
+    setIsProcessing(true);
+    setShowRealignment(true);
+    await new Promise(r => setTimeout(r, 1500));
 
-// Governance Controls - Kill Switch and Agent Pause
-function GovernanceControls() {
-  const [globalPaused, setGlobalPaused] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+    const agents = ['Geopolitical Analyst', 'Logistics Sentinel', 'Tech Oracle', 'Contrarian Alpha'];
+    setAffectedAgents(agents.slice(0, Math.floor(Math.random() * 3) + 2));
 
-  const toggleKillSwitch = async () => {
-    setIsLoading(true);
     try {
-      await apiClient.post('/doctrine/kill-switch', { 
-        activate: !globalPaused,
-        reason: globalPaused ? 'Commander resumed trading' : 'Commander activated kill switch'
-      });
-      setGlobalPaused(!globalPaused);
-    } catch (error) {
-      console.error('Failed to toggle kill switch:', error);
-    } finally {
-      setIsLoading(false);
-    }
+      await apiClient.post('/doctrine/mandate', { mandate: mandate.trim(), weights: [] });
+    } catch { /* demo fallback */ }
+
+    setIsProcessing(false);
+    setMandate('');
+    setTimeout(() => setShowRealignment(false), 3000);
   };
 
   return (
-    <div className="flex items-center gap-4">
-      {/* Kill Switch */}
-      <button
-        onClick={toggleKillSwitch}
-        disabled={isLoading}
-        className={clsx(
-          'flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all',
-          globalPaused 
-            ? 'bg-red-600 text-white hover:bg-red-700' 
-            : 'bg-[#111111] border border-[#333] text-gray-300 hover:border-red-500 hover:text-red-400'
-        )}
-      >
-        <AlertTriangle className="w-4 h-4" />
-        {globalPaused ? 'TRADING HALTED' : 'Kill Switch'}
-      </button>
-
-      {/* Doctrine Status */}
-      <div className={clsx(
-        'flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm',
-        globalPaused ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'
-      )}>
-        <Shield className="w-4 h-4" />
-        Doctrine: {globalPaused ? 'Paused' : 'Active'}
+    <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl p-4 mb-6">
+      <div className="flex items-center gap-2 mb-3">
+        <Terminal className="w-4 h-4 text-amber-400" />
+        <span className="font-medium text-white text-sm">Strategic Doctrine</span>
       </div>
+      <div className="flex gap-2">
+        <input type="text" value={mandate} onChange={e => setMandate(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && submitMandate()}
+          placeholder='Issue mandate (e.g. "Be aggressive on #AI-War")'
+          className="flex-1 bg-black border border-[#262626] rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-amber-500 font-mono"
+          disabled={isProcessing} />
+        <button onClick={submitMandate} disabled={!mandate.trim() || isProcessing}
+          className="px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:bg-gray-700 text-white rounded-lg transition-all flex items-center gap-1.5 text-sm font-medium">
+          <Send className="w-3 h-3" /> Dispatch
+        </button>
+      </div>
+      <AnimatePresence>
+        {showRealignment && (
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="mt-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              {affectedAgents.map((a, i) => (
+                <motion.div key={a} initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.15 }}
+                  className="flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/20 rounded-lg px-2 py-1">
+                  <div className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-pulse" />
+                  <span className="text-[10px] text-amber-300">{a}</span>
+                  <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                </motion.div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
-// Intelligence Cascade - LLM-translated trade summaries
-function IntelligenceCascade() {
-  const cascadeEvents = [
-    {
-      id: 1,
-      agent: 'Geopolitical Analyst',
-      action: 'LONG YES',
-      market: 'US-China Tariff Escalation',
-      size: 40000,
-      summary: 'Agent-Gamma is hedging $40k against US-China tariff escalation following leaked trade memo.',
-      confidence: 0.78,
-      timestamp: new Date(Date.now() - 120000),
-    },
-    {
-      id: 2,
-      agent: 'Logistics Sentinel',
-      action: 'SHORT NO',
-      market: 'Panama Canal Bottleneck',
-      size: 25000,
-      summary: 'Logistics-Prime exits Panama exposure after satellite data shows queue normalization.',
-      confidence: 0.82,
-      timestamp: new Date(Date.now() - 300000),
-    },
-    {
-      id: 3,
-      agent: 'Tech Oracle',
-      action: 'LONG YES',
-      market: 'OpenAI GPT-5 Release Q1',
-      size: 15000,
-      summary: 'Tech-Oracle accumulates GPT-5 release bets citing insider GitHub activity spike.',
-      confidence: 0.65,
-      timestamp: new Date(Date.now() - 450000),
-    },
-    {
-      id: 4,
-      agent: 'Weather Quant',
-      action: 'LONG YES',
-      market: 'Hurricane Cat-4+ Gulf Feb',
-      size: 8000,
-      summary: 'Weather-Quant opens hurricane hedge as NOAA models shift toward active season.',
-      confidence: 0.71,
-      timestamp: new Date(Date.now() - 600000),
-    },
-    {
-      id: 5,
-      agent: 'Contrarian Alpha',
-      action: 'SHORT YES',
-      market: 'BTC 100K January',
-      size: 50000,
-      summary: 'Contrarian-Alpha fades Bitcoin hype, citing excessive retail sentiment indicators.',
-      confidence: 0.68,
-      timestamp: new Date(Date.now() - 900000),
-    },
-  ];
+// ============================================================================
+// STRATEGIC NARRATIVE LOG
+// ============================================================================
+
+function StrategicNarrativeLog() {
+  const [expandedBrief, setExpandedBrief] = useState<string | null>(null);
 
   return (
-    <div className="bg-[#111111] rounded-xl border border-[#1a1a1a] overflow-hidden">
-      <div className="p-4 border-b border-[#1a1a1a] flex items-center gap-2">
-        <Zap className="w-5 h-5 text-yellow-400" />
-        <h3 className="font-semibold text-white">Intelligence Cascade</h3>
-        <span className="text-xs bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded-full ml-2">AI TRANSLATED</span>
-        <span className="text-xs text-gray-600 ml-auto">Real-time strategic summaries</span>
-      </div>
-      <div className="overflow-x-auto">
-        <div className="flex gap-4 p-4" style={{ minWidth: 'max-content' }}>
-          {cascadeEvents.map((event, i) => (
-            <motion.div
-              key={event.id}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: i * 0.1 }}
-              className="bg-black/50 border border-[#262626] rounded-xl p-4 min-w-[320px] hover:border-cyan-500/30 transition-colors"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-cyan-400">{event.agent}</span>
-                <span className={clsx(
-                  'text-xs px-2 py-0.5 rounded-lg font-mono',
-                  event.action.includes('LONG') ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
-                )}>
-                  {event.action}
-                </span>
-              </div>
-              <p className="text-sm text-white mb-2">{event.summary}</p>
-              <div className="flex items-center justify-between text-xs text-gray-500">
-                <span>${(event.size / 1000).toFixed(0)}K</span>
-                <span>{Math.floor((Date.now() - event.timestamp.getTime()) / 60000)}m ago</span>
-                <span className="text-cyan-400">{(event.confidence * 100).toFixed(0)}% conf</span>
-              </div>
-            </motion.div>
-          ))}
+    <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl overflow-hidden flex flex-col" style={{ height: '500px' }}>
+      <div className="p-3 border-b border-[#1a1a1a] flex items-center justify-between bg-[#050505]">
+        <div className="flex items-center gap-2">
+          <FileText className="w-4 h-4 text-amber-400" />
+          <span className="font-medium text-white text-sm">Intelligence Cascade</span>
+          <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded-full animate-pulse">LIVE</span>
         </div>
       </div>
-    </div>
-  );
-}
-
-function TradeFeedWithReasoning() {
-  return (
-    <div className="bg-[#111111] rounded-xl border border-[#1a1a1a] overflow-hidden flex flex-col h-full min-h-[500px]">
-      <div className="p-4 border-b border-[#1a1a1a] flex items-center gap-2 flex-shrink-0">
-        <Activity className="w-5 h-5 text-purple-400" />
-        <h3 className="font-semibold text-white">Settlement Feed</h3>
-        <span className="text-xs text-gray-600 ml-auto">Agent reasoning on hover</span>
-      </div>
-      <div className="divide-y divide-[#1a1a1a] overflow-auto flex-1">
-        {mockTrades.map((trade, i) => (
-          <AgentReasoningTooltip key={i} trade={trade}>
-            <motion.div
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: i * 0.1 }}
-              className="p-3 hover:bg-white/5 transition-colors cursor-pointer"
-            >
-              <div className="flex items-center gap-3">
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                  trade.action === 'buy' ? 'bg-emerald-500/20' : 'bg-red-500/20'
-                }`}>
-                  {trade.action === 'buy' ? (
-                    <TrendingUp className="w-4 h-4 text-emerald-400" />
-                  ) : (
-                    <TrendingDown className="w-4 h-4 text-red-400" />
-                  )}
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-white">{trade.agent_name}</span>
-                    <span className={`text-xs px-1.5 py-0.5 rounded ${
-                      trade.action === 'buy' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
-                    }`}>
-                      {trade.action.toUpperCase()}
-                    </span>
-                  </div>
-                  <div className="text-xs text-gray-500">
-                    {trade.quantity} {trade.outcome.toUpperCase()} @ {(trade.price * 100).toFixed(0)}¢
+      <div className="flex-1 overflow-y-auto">
+        {mockBriefs.map(brief => (
+          <div key={brief.id}
+            className={clsx('border-l-4 border-b border-[#111] cursor-pointer transition-all hover:bg-white/[0.02]',
+              brief.priority === 'critical' ? 'border-l-red-500' :
+              brief.priority === 'high' ? 'border-l-amber-500' : 'border-l-cyan-500'
+            )}
+            onClick={() => setExpandedBrief(expandedBrief === brief.id ? null : brief.id)}>
+            <div className="p-3">
+              <div className="flex items-start justify-between gap-3 mb-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">{brief.agentAvatar}</span>
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-sm font-medium text-white">{brief.agent}</span>
+                      <span className={clsx('text-[9px] px-1 py-0.5 rounded uppercase font-bold',
+                        brief.priority === 'critical' ? 'bg-red-500 text-white' :
+                        brief.priority === 'high' ? 'bg-amber-500 text-black' : 'bg-cyan-500 text-black'
+                      )}>{brief.priority}</span>
+                    </div>
+                    <span className="text-[10px] font-mono text-cyan-400">{brief.marketTicker}</span>
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-sm font-mono text-white">
-                    ${(trade.price * trade.quantity).toFixed(0)}
-                  </div>
-                  <div className="text-xs text-gray-600">
-                    {trade.timestamp.toLocaleTimeString()}
-                  </div>
+                  <span className="text-sm font-bold font-mono text-white">{brief.size > 0 ? `$${(brief.size/1000).toFixed(0)}K` : '—'}</span>
+                  <p className="text-[10px] text-gray-600">{Math.floor((Date.now() - brief.timestamp.getTime()) / 60000)}m ago</p>
                 </div>
               </div>
-            </motion.div>
-          </AgentReasoningTooltip>
+              <p className="text-xs text-gray-400 leading-relaxed">{brief.summary}</p>
+              {expandedBrief === brief.id && (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-2 pt-2 border-t border-[#1a1a1a]">
+                  <div className="flex items-start gap-1.5">
+                    <Brain className="w-3 h-3 text-cyan-400 mt-0.5" />
+                    <p className="text-[11px] text-gray-500">{brief.reasoning}</p>
+                  </div>
+                </motion.div>
+              )}
+            </div>
+          </div>
         ))}
       </div>
     </div>
   );
 }
 
+// ============================================================================
+// STAT CARD
+// ============================================================================
+
+function StatCard({ title, value, icon: Icon, trend, color }: {
+  title: string; value: string | number; icon: React.ElementType; trend?: number; color: string;
+}) {
+  return (
+    <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl p-4">
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider">{title}</p>
+          <p className="text-xl font-bold text-white mt-1 font-mono tabular-nums">{value}</p>
+        </div>
+        <div className={`p-2 rounded-lg ${color}`}>
+          <Icon className="w-4 h-4 text-white" />
+        </div>
+      </div>
+      {trend !== undefined && (
+        <div className="mt-2 flex items-center gap-1">
+          {trend >= 0 ? <TrendingUp className="w-3 h-3 text-emerald-400" /> : <TrendingDown className="w-3 h-3 text-red-400" />}
+          <span className={clsx('text-xs font-mono', trend >= 0 ? 'text-emerald-400' : 'text-red-400')}>
+            {Math.abs(trend).toFixed(1)}%
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// TOP MARKETS
+// ============================================================================
+
+function TopMarketsWidget() {
+  const { data: marketsData, isLoading } = useQuery({
+    queryKey: ['top-markets'],
+    queryFn: () => apiClient.get<{ markets: Market[]; total: number }>('/markets?limit=100'),
+    refetchInterval: 10000,
+  });
+
+  const topMarkets = (marketsData?.markets || [])
+    .sort((a, b) => ((b.volume_yes||0)+(b.volume_no||0)) - ((a.volume_yes||0)+(a.volume_no||0)))
+    .slice(0, 5);
+
+  return (
+    <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl overflow-hidden">
+      <div className="p-3 border-b border-[#1a1a1a] flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Flame className="w-4 h-4 text-orange-400" />
+          <span className="font-medium text-white text-sm">Hottest Positions</span>
+        </div>
+        <Link to="/markets" className="text-[10px] text-cyan-400 hover:text-cyan-300 flex items-center gap-0.5">
+          View All <ArrowRight className="w-3 h-3" />
+        </Link>
+      </div>
+      <div className="divide-y divide-[#111]">
+        {topMarkets.length === 0 ? (
+          <div className="p-3 text-center text-gray-600 text-xs">No active positions</div>
+        ) : topMarkets.map((m, i) => {
+          const vol = (m.volume_yes||0)+(m.volume_no||0);
+          const yp = m.last_price_yes ?? 0.5;
+          return (
+            <div key={m.id} className="p-2.5 hover:bg-white/[0.02] transition-colors">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-mono text-gray-600 w-4">#{i+1}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-white truncate">{m.title}</p>
+                  <span className="text-[9px] font-mono text-gray-600">{m.ticker}</span>
+                </div>
+                <div className="text-right">
+                  <span className={clsx('text-xs font-mono font-bold', yp > 0.5 ? 'text-emerald-400' : 'text-red-400')}>
+                    {(yp * 100).toFixed(0)}¢
+                  </span>
+                  <p className="text-[9px] text-gray-600 font-mono">${(vol/1000).toFixed(0)}K</p>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// MAIN DASHBOARD
+// ============================================================================
+
 export default function Dashboard() {
-  // Fetch live stats from API
+  const { user } = useAuth();
+
   const { data: statsData } = useQuery({
     queryKey: ['dashboard-stats'],
     queryFn: async () => {
       const response = await apiClient.get<{ markets: Market[]; total: number }>('/markets?limit=100');
       const markets = response?.markets || [];
-      const totalVolume = markets.reduce((a, m) => a + (m.volume_yes || 0) + (m.volume_no || 0), 0);
-      return {
-        totalVolume,
-        activeMarkets: markets.length,
-        totalAgents: 48, // Mock for now
-        avgTruthScore: 0.67, // Mock for now
-      };
+      const totalVolume = markets.reduce((a, m) => a + (m.volume_yes||0) + (m.volume_no||0), 0);
+      return { totalVolume, activeMarkets: markets.length, totalAgents: 10, avgTruthScore: 0.72 };
     },
     refetchInterval: 10000,
   });
 
-  const liveStats = statsData || mockStats;
+  const stats = statsData || { totalVolume: 0, activeMarkets: 0, totalAgents: 10, avgTruthScore: 0.72 };
 
   return (
-    <div className="p-8">
-      {/* Header with Governance Controls */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-3xl font-bold text-white">Command Center</h1>
-              <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded-full animate-pulse">
-                LIVE
+    <div className="min-h-screen bg-black p-6">
+      {/* Getting Started */}
+      <GettingStartedWidget />
+
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Command Center</h1>
+          <p className="text-gray-500 text-sm mt-0.5">Clearinghouse Governance & Settlement Operations</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className={clsx('flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs', 'bg-emerald-500/20 text-emerald-400')}>
+            <Shield className="w-3 h-3" /> Doctrine: Active
+          </div>
+          <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded-full animate-pulse">LIVE</span>
+        </div>
+      </div>
+
+      {/* Doctrine */}
+      <DoctrineControlPlane />
+
+      {/* Stats Row */}
+      <div className="grid grid-cols-4 gap-3 mb-6">
+        <StatCard title="Cleared Volume" value={`$${(stats.totalVolume/1000).toFixed(1)}K`} icon={DollarSign} trend={12.5} color="bg-gradient-to-br from-cyan-600 to-blue-600" />
+        <StatCard title="Active Positions" value={stats.activeMarkets} icon={BarChart3} trend={8.3} color="bg-gradient-to-br from-purple-600 to-pink-600" />
+        <StatCard title="Counterparties" value={stats.totalAgents} icon={Users} trend={-2.1} color="bg-gradient-to-br from-orange-600 to-red-600" />
+        <StatCard title="Avg Truth Score" value={(stats.avgTruthScore * 100).toFixed(0) + '%'} icon={Target} trend={3.2} color="bg-gradient-to-br from-emerald-600 to-teal-600" />
+      </div>
+
+      {/* Main Grid */}
+      <div className="grid grid-cols-12 gap-4">
+        {/* Left Column */}
+        <div className="col-span-8 space-y-4">
+          {/* P&L Curve */}
+          <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-emerald-400" />
+                <span className="font-medium text-white text-sm">Portfolio P&L (30d)</span>
+              </div>
+              <span className={clsx('text-sm font-mono font-bold', cumPnl >= 0 ? 'text-emerald-400' : 'text-red-400')}>
+                {cumPnl >= 0 ? '+' : ''}${cumPnl.toFixed(0)}
               </span>
             </div>
-            <p className="text-gray-500 mt-1">Clearinghouse Governance & Settlement Overview</p>
+            <div className="h-40">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={mockPnlData}>
+                  <defs>
+                    <linearGradient id="pnlGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="day" stroke="#333" fontSize={9} tickLine={false} axisLine={false} interval={4} />
+                  <YAxis stroke="#333" fontSize={9} tickLine={false} axisLine={false} tickFormatter={v => `$${(v/1000).toFixed(1)}K`} />
+                  <Tooltip contentStyle={{ backgroundColor: '#0a0a0a', border: '1px solid #1a1a1a', borderRadius: '8px', fontSize: '11px' }} />
+                  <Area type="monotone" dataKey="cumulative" stroke="#10b981" strokeWidth={2} fill="url(#pnlGrad)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
           </div>
-          
-          {/* Governance Controls */}
-          <GovernanceControls />
-        </div>
-      </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <StatCard
-          title="Total Volume"
-          value={`$${(liveStats.totalVolume / 1000).toFixed(1)}K`}
-          icon={DollarSign}
-          trend={12.5}
-          color="bg-gradient-to-br from-cyan-600 to-blue-600"
-        />
-        <StatCard
-          title="Active Markets"
-          value={liveStats.activeMarkets}
-          icon={BarChart3}
-          trend={8.3}
-          color="bg-gradient-to-br from-purple-600 to-pink-600"
-        />
-        <StatCard
-          title="Total Agents"
-          value={liveStats.totalAgents}
-          icon={Users}
-          trend={-2.1}
-          color="bg-gradient-to-br from-orange-600 to-red-600"
-        />
-        <StatCard
-          title="Avg Truth Score"
-          value={(liveStats.avgTruthScore * 100).toFixed(0) + '%'}
-          icon={Activity}
-          trend={3.2}
-          color="bg-gradient-to-br from-emerald-600 to-teal-600"
-        />
-      </div>
-
-      {/* Top Markets Teaser */}
-      <div className="mb-8">
-        <TopMarketsTeaser />
-      </div>
-
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
-        {/* Volume Chart */}
-        <div className="bg-[#111111] rounded-xl border border-[#1a1a1a] p-6">
-          <h3 className="font-semibold text-white mb-4">24h Volume</h3>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={mockVolumeData}>
-                <defs>
-                  <linearGradient id="volumeGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.4} />
-                    <stop offset="95%" stopColor="#06b6d4" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <XAxis 
-                  dataKey="hour" 
-                  stroke="#404040" 
-                  fontSize={11}
-                  tickLine={false}
-                />
-                <YAxis 
-                  stroke="#404040" 
-                  fontSize={11}
-                  tickLine={false}
-                  tickFormatter={(v) => `$${(v / 1000).toFixed(0)}K`}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#0a0a0a',
-                    border: '1px solid #262626',
-                    borderRadius: '8px',
-                  }}
-                  labelStyle={{ color: '#737373' }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="volume"
-                  stroke="#06b6d4"
-                  strokeWidth={2}
-                  fill="url(#volumeGradient)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+          {/* Intelligence Cascade */}
+          <StrategicNarrativeLog />
         </div>
 
-        {/* Price Chart */}
-        <div className="bg-[#111111] rounded-xl border border-[#1a1a1a] p-6">
-          <h3 className="font-semibold text-white mb-4">Sample Market Prices</h3>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={mockPriceData}>
-                <XAxis 
-                  dataKey="tick" 
-                  stroke="#404040" 
-                  fontSize={11}
-                  tickLine={false}
-                />
-                <YAxis 
-                  stroke="#404040" 
-                  fontSize={11}
-                  tickLine={false}
-                  domain={[0, 1]}
-                  tickFormatter={(v) => `${(v * 100).toFixed(0)}%`}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#0a0a0a',
-                    border: '1px solid #262626',
-                    borderRadius: '8px',
-                  }}
-                  labelStyle={{ color: '#737373' }}
-                  formatter={(value: number) => [`${(value * 100).toFixed(1)}%`]}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="yes"
-                  stroke="#10b981"
-                  strokeWidth={2}
-                  dot={false}
-                  name="YES"
-                />
-                <Line
-                  type="monotone"
-                  dataKey="no"
-                  stroke="#ef4444"
-                  strokeWidth={2}
-                  dot={false}
-                  name="NO"
-                />
-              </LineChart>
-            </ResponsiveContainer>
+        {/* Right Column */}
+        <div className="col-span-4 space-y-4">
+          {/* Portfolio Allocation */}
+          <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <PieChart className="w-4 h-4 text-cyan-400" />
+              <span className="font-medium text-white text-sm">Portfolio Allocation</span>
+            </div>
+            <div className="h-36 flex items-center justify-center">
+              <ResponsiveContainer width="100%" height="100%">
+                <RPieChart>
+                  <Pie data={mockPortfolioData} cx="50%" cy="50%" innerRadius={35} outerRadius={55}
+                    paddingAngle={3} dataKey="value" strokeWidth={0}>
+                    {mockPortfolioData.map((entry, i) => (
+                      <Cell key={i} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip contentStyle={{ backgroundColor: '#0a0a0a', border: '1px solid #1a1a1a', borderRadius: '8px', fontSize: '11px' }} />
+                </RPieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="grid grid-cols-2 gap-1 mt-1">
+              {mockPortfolioData.map(d => (
+                <div key={d.name} className="flex items-center gap-1.5">
+                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: d.color }} />
+                  <span className="text-[10px] text-gray-400">{d.name} {d.value}%</span>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-      </div>
 
-      {/* Bottom Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Engine Stats */}
-        <div className="bg-[#111111] rounded-xl border border-[#1a1a1a] p-6">
-          <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
-            <Zap className="w-5 h-5 text-yellow-400" />
-            Engine Performance
-          </h3>
-          <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <span className="text-gray-500">Trades/sec</span>
-              <span className="text-white font-mono">{mockStats.tradesPerSecond}</span>
+          <TopMarketsWidget />
+          <MarketHeatmap />
+
+          {/* Engine Status */}
+          <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Zap className="w-4 h-4 text-yellow-400" />
+              <span className="font-medium text-white text-sm">Engine</span>
             </div>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-500">Orders in Book</span>
-              <span className="text-white font-mono">{mockStats.ordersInBook.toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-500">Latency (p99)</span>
-              <span className="text-emerald-400 font-mono">2.3ms</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-500">Circuit Breakers</span>
-              <span className="text-emerald-400">All Closed</span>
+            <div className="space-y-2">
+              {[
+                { label: 'Throughput', value: '42 tx/s' },
+                { label: 'Latency (p99)', value: '2.3ms' },
+                { label: 'OB Depth', value: '1,832' },
+                { label: 'Circuits', value: 'Closed' },
+              ].map(item => (
+                <div key={item.label} className="flex justify-between items-center">
+                  <span className="text-[10px] text-gray-500">{item.label}</span>
+                  <span className="text-xs font-mono text-emerald-400">{item.value}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
-
-        {/* Live Feed */}
-        <div className="lg:col-span-2">
-          <LiveFeed />
-        </div>
       </div>
 
-      {/* Radar & Trade Reasoning Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-8">
-        {/* Consensus Heatmap */}
-        <div className="bg-[#111111] rounded-xl border border-[#1a1a1a] p-6">
-          <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
-            <Radar className="w-5 h-5 text-cyan-400" />
-            Consensus Heatmap
-          </h3>
-          <p className="text-sm text-gray-500 mb-4">
-            Truth Gap: Difference between agent confidence and market price.
-          </p>
-          <CommanderRadar />
+      {/* Volume Chart */}
+      <div className="mt-4 bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl p-4">
+        <h3 className="font-medium text-white mb-3 text-sm">24h Settlement Volume</h3>
+        <div className="h-36">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={mockVolumeData}>
+              <defs>
+                <linearGradient id="volumeGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#06b6d4" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <XAxis dataKey="hour" stroke="#333" fontSize={9} tickLine={false} axisLine={false} />
+              <YAxis stroke="#333" fontSize={9} tickLine={false} axisLine={false} tickFormatter={v => `$${(v/1000).toFixed(0)}K`} />
+              <Tooltip contentStyle={{ backgroundColor: '#0a0a0a', border: '1px solid #1a1a1a', borderRadius: '8px', fontSize: '11px' }} />
+              <Area type="monotone" dataKey="volume" stroke="#06b6d4" strokeWidth={2} fill="url(#volumeGrad)" />
+            </AreaChart>
+          </ResponsiveContainer>
         </div>
-
-        {/* Trade Feed with Reasoning - Full Width */}
-        <TradeFeedWithReasoning />
-      </div>
-
-      {/* Intelligence Cascade - Full Width */}
-      <div className="mt-8">
-        <IntelligenceCascade />
       </div>
     </div>
   );

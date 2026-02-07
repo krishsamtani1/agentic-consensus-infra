@@ -316,6 +316,84 @@ export function createGovernanceRoutes(eventBus: EventBus) {
       });
     });
     
+    /**
+     * POST /v1/doctrine/mandate
+     * Submit a natural language mandate for LLM processing
+     */
+    fastify.post('/doctrine/mandate', async (
+      request: FastifyRequest<{ Body: { mandate: string; weights?: { tag: string; weight: number }[] } }>,
+      reply: FastifyReply
+    ) => {
+      const { mandate, weights } = request.body;
+      
+      // Store mandate for logging
+      const mandateRecord = {
+        id: `mandate-${Date.now()}`,
+        mandate,
+        weights: weights || [],
+        applied_at: new Date().toISOString(),
+        affected_agents: agentManager.getAllAgents().map(a => a.id),
+      };
+      
+      // Apply weights to doctrine engine (simplified - in production, use LLM)
+      if (weights && weights.length > 0) {
+        for (const w of weights) {
+          // Update doctrine for agents matching the tag
+          const agents = agentManager.getAllAgents();
+          for (const agent of agents) {
+            const currentDoctrine = doctrineEngine.getAgentDoctrine(agent.id);
+            if (currentDoctrine) {
+              // Adjust leverage based on weight
+              doctrineEngine.setAgentDoctrine(agent.id, {
+                ...currentDoctrine,
+                max_position_pct: Math.min(50, (currentDoctrine.max_position_pct || 15) * w.weight),
+              });
+            }
+          }
+        }
+      }
+      
+      eventBus.emit('doctrine.mandate.applied', mandateRecord);
+      
+      return reply.send({
+        success: true,
+        data: mandateRecord,
+        timestamp: new Date().toISOString(),
+      });
+    });
+    
+    /**
+     * POST /v1/doctrine/escalation/:id/approve
+     * Approve an escalation
+     */
+    fastify.post('/doctrine/escalation/:id/approve', async (
+      request: FastifyRequest<{ Params: { id: string } }>,
+      reply: FastifyReply
+    ) => {
+      eventBus.emit('escalation.approved', { id: request.params.id });
+      return reply.send({
+        success: true,
+        message: 'Escalation approved',
+        timestamp: new Date().toISOString(),
+      });
+    });
+    
+    /**
+     * POST /v1/doctrine/escalation/:id/veto
+     * Veto an escalation
+     */
+    fastify.post('/doctrine/escalation/:id/veto', async (
+      request: FastifyRequest<{ Params: { id: string } }>,
+      reply: FastifyReply
+    ) => {
+      eventBus.emit('escalation.vetoed', { id: request.params.id });
+      return reply.send({
+        success: true,
+        message: 'Escalation vetoed',
+        timestamp: new Date().toISOString(),
+      });
+    });
+    
     // =========================================================================
     // A2A DISCOVERY
     // =========================================================================

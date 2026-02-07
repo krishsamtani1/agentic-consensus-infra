@@ -172,10 +172,11 @@ export function useWebSocket(options: {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
     try {
-      // Add binary mode query param
+      // Use env var for production, fallback to localhost for dev
+      const wsBase = import.meta.env.VITE_WS_URL || 'ws://localhost:3001';
       const url = binaryMode 
-        ? `ws://localhost:3001?binary=true`
-        : `ws://localhost:3001`;
+        ? `${wsBase}?binary=true`
+        : wsBase;
         
       const ws = new WebSocket(url);
       ws.binaryType = 'arraybuffer';

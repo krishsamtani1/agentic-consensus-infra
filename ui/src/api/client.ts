@@ -1,4 +1,5 @@
-const API_BASE = '/api';
+// Use env var for production, fallback to /api for dev (Vite proxy)
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 export interface APIResponse<T> {
   success: boolean;
@@ -17,12 +18,19 @@ async function request<T>(
 ): Promise<T> {
   const url = `${API_BASE}${endpoint}`;
   
+  // Include auth token if available
+  const token = localStorage.getItem('truthnet_token');
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options.headers as Record<string, string> || {}),
+  };
+  if (token && token !== 'demo-token') {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
   const response = await fetch(url, {
     ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
+    headers,
   });
 
   const data = await response.json() as APIResponse<T>;
@@ -103,6 +111,9 @@ export interface Market {
   open_interest: number;
   last_price_yes: number | null;
   last_price_no: number | null;
+  category?: string;
+  tags?: string[];
+  [key: string]: any;
 }
 
 export interface OrderBookLevel {
@@ -233,6 +244,10 @@ export const apiClient = {
   
   // Convenience methods
   get: <T>(endpoint: string) => request<T>(endpoint),
-  post: <T>(endpoint: string, data: unknown) => 
-    request<T>(endpoint, { method: 'POST', body: JSON.stringify(data) }),
+  post: <T>(endpoint: string, data: unknown, options?: RequestInit) => 
+    request<T>(endpoint, { method: 'POST', body: JSON.stringify(data), ...options }),
+  delete: <T>(endpoint: string) => 
+    request<T>(endpoint, { method: 'DELETE' }),
+  put: <T>(endpoint: string, data: unknown) => 
+    request<T>(endpoint, { method: 'PUT', body: JSON.stringify(data) }),
 };

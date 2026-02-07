@@ -518,8 +518,11 @@ export class AgentManager {
 // Singleton
 let agentManager: AgentManager | null = null;
 
-export function getAgentManager(eventBus: EventBus): AgentManager {
+export function getAgentManager(eventBus?: EventBus): AgentManager {
   if (!agentManager) {
+    if (!eventBus) {
+      throw new Error('AgentManager not initialized. Provide EventBus on first call.');
+    }
     agentManager = new AgentManager(eventBus);
   }
   return agentManager;

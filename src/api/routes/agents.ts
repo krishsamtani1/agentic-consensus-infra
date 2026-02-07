@@ -1,133 +1,31 @@
 /**
- * TRUTH-NET Agent Routes
- * Manages AI agent registration, wallets, and reputation
+ * TRUTH-NET Agent Wallet Routes
+ * Handles wallet operations (deposit, withdraw, balance)
+ * 
+ * NOTE: Agent CRUD operations moved to governance.ts
  */
 
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { v4 as uuidv4 } from 'uuid';
-import crypto from 'crypto';
-import { CreateAgentRequestSchema } from '../schemas/index.js';
-import { Agent, AgentStatus, Wallet } from '../../types.js';
+import { Wallet } from '../../types.js';
 import { EscrowLedger } from '../../engine/escrow/EscrowLedger.js';
-
-// In-memory store (production would use PostgreSQL)
-const agents: Map<string, Agent> = new Map();
-const apiKeyToAgentId: Map<string, string> = new Map();
 
 export function createAgentRoutes(escrow: EscrowLedger) {
   return async function agentRoutes(fastify: FastifyInstance): Promise<void> {
-    /**
-     * POST /v1/agents
-     * Register a new AI agent
-     */
-    fastify.post('/agents', async (request: FastifyRequest, reply: FastifyReply) => {
-      const parseResult = CreateAgentRequestSchema.safeParse(request.body);
-      if (!parseResult.success) {
-        return reply.status(400).send({
-          success: false,
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: 'Invalid request body',
-            details: parseResult.error.flatten(),
-          },
-          timestamp: new Date().toISOString(),
-        });
-      }
-
-      const { name, description, metadata } = parseResult.data;
-
-      // Generate API key
-      const apiKey = `tn_${crypto.randomBytes(32).toString('hex')}`;
-      const apiKeyHash = crypto.createHash('sha256').update(apiKey).digest('hex');
-
-      // Create agent
-      const agent: Agent = {
-        id: uuidv4(),
-        name,
-        description,
-        truth_score: 0.5,
-        total_trades: 0,
-        winning_trades: 0,
-        total_staked: 0,
-        total_pnl: 0,
-        status: AgentStatus.ACTIVE,
-        metadata: metadata ?? {},
-        created_at: new Date(),
-        updated_at: new Date(),
-        last_active_at: new Date(),
-      };
-
-      // Create wallet
-      const wallet = escrow.createWallet(agent.id, 0);
-
-      // Store
-      agents.set(agent.id, agent);
-      apiKeyToAgentId.set(apiKeyHash, agent.id);
-
-      return reply.status(201).send({
-        success: true,
-        data: {
-          agent: formatAgent(agent),
-          api_key: apiKey, // Only returned once!
-          wallet: formatWallet(wallet),
-        },
-        timestamp: new Date().toISOString(),
-      });
-    });
-
-    /**
-     * GET /v1/agents/:id
-     * Get agent profile and reputation
-     */
-    fastify.get('/agents/:id', async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
-      const { id } = request.params;
-      const agent = agents.get(id);
-
-      if (!agent) {
-        return reply.status(404).send({
-          success: false,
-          error: {
-            code: 'AGENT_NOT_FOUND',
-            message: `Agent ${id} not found`,
-          },
-          timestamp: new Date().toISOString(),
-        });
-      }
-
-      return reply.send({
-        success: true,
-        data: formatAgent(agent),
-        timestamp: new Date().toISOString(),
-      });
-    });
-
+    
     /**
      * GET /v1/agents/:id/wallet
      * Get agent wallet balance
      */
     fastify.get('/agents/:id/wallet', async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
       const { id } = request.params;
-      const agent = agents.get(id);
-
-      if (!agent) {
-        return reply.status(404).send({
-          success: false,
-          error: {
-            code: 'AGENT_NOT_FOUND',
-            message: `Agent ${id} not found`,
-          },
-          timestamp: new Date().toISOString(),
-        });
-      }
 
       const wallet = escrow.getWallet(id);
       if (!wallet) {
-        return reply.status(404).send({
-          success: false,
-          error: {
-            code: 'WALLET_NOT_FOUND',
-            message: `Wallet for agent ${id} not found`,
-          },
+        // Create wallet if it doesn't exist
+        const newWallet = escrow.createWallet(id, 0);
+        return reply.send({
+          success: true,
+          data: formatWallet(newWallet),
           timestamp: new Date().toISOString(),
         });
       }
@@ -164,19 +62,12 @@ export function createAgentRoutes(escrow: EscrowLedger) {
         });
       }
 
-      const agent = agents.get(id);
-      if (!agent) {
-        return reply.status(404).send({
-          success: false,
-          error: {
-            code: 'AGENT_NOT_FOUND',
-            message: `Agent ${id} not found`,
-          },
-          timestamp: new Date().toISOString(),
-        });
-      }
-
       try {
+        // Ensure wallet exists
+        if (!escrow.getWallet(id)) {
+          escrow.createWallet(id, 0);
+        }
+        
         const tx = await escrow.deposit(id, amount);
         const wallet = escrow.getWallet(id)!;
 
@@ -226,13 +117,13 @@ export function createAgentRoutes(escrow: EscrowLedger) {
         });
       }
 
-      const agent = agents.get(id);
-      if (!agent) {
+      const wallet = escrow.getWallet(id);
+      if (!wallet) {
         return reply.status(404).send({
           success: false,
           error: {
-            code: 'AGENT_NOT_FOUND',
-            message: `Agent ${id} not found`,
+            code: 'WALLET_NOT_FOUND',
+            message: `Wallet for agent ${id} not found`,
           },
           timestamp: new Date().toISOString(),
         });
@@ -240,14 +131,14 @@ export function createAgentRoutes(escrow: EscrowLedger) {
 
       try {
         const tx = await escrow.withdraw(id, amount);
-        const wallet = escrow.getWallet(id)!;
+        const updatedWallet = escrow.getWallet(id)!;
 
         return reply.send({
           success: true,
           data: {
             transaction_id: tx.id,
             amount: Math.abs(tx.amount),
-            balance: formatWallet(wallet),
+            balance: formatWallet(updatedWallet),
           },
           timestamp: new Date().toISOString(),
         });
@@ -265,26 +156,7 @@ export function createAgentRoutes(escrow: EscrowLedger) {
   };
 }
 
-// Helper functions
-function formatAgent(agent: Agent) {
-  return {
-    id: agent.id,
-    name: agent.name,
-    description: agent.description ?? null,
-    truth_score: agent.truth_score,
-    total_trades: agent.total_trades,
-    winning_trades: agent.winning_trades,
-    win_rate: agent.total_trades > 0 ? agent.winning_trades / agent.total_trades : 0,
-    total_staked: agent.total_staked,
-    total_pnl: agent.total_pnl,
-    status: agent.status,
-    metadata: agent.metadata,
-    created_at: agent.created_at.toISOString(),
-    updated_at: agent.updated_at.toISOString(),
-    last_active_at: agent.last_active_at.toISOString(),
-  };
-}
-
+// Helper function
 function formatWallet(wallet: Wallet) {
   return {
     id: wallet.id,
@@ -297,6 +169,3 @@ function formatWallet(wallet: Wallet) {
     updated_at: wallet.updated_at.toISOString(),
   };
 }
-
-// Export for use in other modules
-export { agents, apiKeyToAgentId };

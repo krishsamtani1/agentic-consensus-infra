@@ -182,6 +182,42 @@ export class EscrowLedger {
   }
 
   // -------------------------------------------------------------------------
+  // Stripe / External Deposit Operations
+  // -------------------------------------------------------------------------
+
+  /**
+   * Deposit from Stripe with idempotency check (prevents double-credit)
+   */
+  private processedStripeSessionIds = new Set<string>();
+
+  async depositFromStripe(userId: string, amount: number, stripeSessionId: string): Promise<WalletTransaction> {
+    // Idempotency: prevent double-credit for same Stripe session
+    if (this.processedStripeSessionIds.has(stripeSessionId)) {
+      throw new Error(`Stripe session ${stripeSessionId} already processed`);
+    }
+
+    if (amount <= 0) {
+      throw new Error('Deposit amount must be positive');
+    }
+
+    // Auto-create wallet if it doesn't exist
+    if (!this.wallets.has(userId)) {
+      this.createWallet(userId, 0);
+    }
+
+    this.processedStripeSessionIds.add(stripeSessionId);
+
+    return this.deposit(userId, amount, `Stripe deposit (session: ${stripeSessionId.slice(0, 16)}...)`);
+  }
+
+  /**
+   * Request withdrawal (locks funds, admin must approve)
+   */
+  async requestWithdrawal(userId: string, amount: number): Promise<EscrowLockResult> {
+    return this.lock(userId, amount, 'withdrawal_pending');
+  }
+
+  // -------------------------------------------------------------------------
   // Escrow Operations
   // -------------------------------------------------------------------------
 

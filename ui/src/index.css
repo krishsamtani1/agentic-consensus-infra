@@ -93,3 +93,75 @@ body {
 .flash-red {
   animation: flashRed 0.5s ease-out;
 }
+
+/* Ticker tape marquee */
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-marquee {
+  animation: marquee 60s linear infinite;
+}
+
+.animate-marquee:hover {
+  animation-play-state: paused;
+}
+
+/* Scanline overlay for terminal feel */
+.scanlines::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.03) 2px,
+    rgba(0, 0, 0, 0.03) 4px
+  );
+  z-index: 9999;
+}
+
+/* Sparkline mini chart */
+.sparkline {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+/* Table row flash animations */
+@keyframes rowFlashGreen {
+  0% { background-color: rgba(16, 185, 129, 0.15); }
+  100% { background-color: transparent; }
+}
+
+@keyframes rowFlashRed {
+  0% { background-color: rgba(239, 68, 68, 0.15); }
+  100% { background-color: transparent; }
+}
+
+.row-flash-green {
+  animation: rowFlashGreen 0.8s ease-out;
+}
+
+.row-flash-red {
+  animation: rowFlashRed 0.8s ease-out;
+}
+
+/* Bloomberg-style price cell */
+.price-cell {
+  font-variant-numeric: tabular-nums;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+/* Pulse effect when agent acts on a market */
+@keyframes marketPulse {
+  0% { box-shadow: 0 0 0 0 rgba(6, 182, 212, 0.4); }
+  70% { box-shadow: 0 0 0 8px rgba(6, 182, 212, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(6, 182, 212, 0); }
+}
+
+.market-pulse {
+  animation: marketPulse 1.5s ease-out;
+}

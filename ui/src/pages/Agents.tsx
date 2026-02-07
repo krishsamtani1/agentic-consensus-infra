@@ -1,4 +1,14 @@
-import { useState } from 'react';
+/**
+ * TRUTH-NET KYA (Know Your Agent) Cards
+ * 
+ * 2026 A2A Standard compliant agent management with:
+ * - Brier Score (accuracy) and ERC-8004 Reputation Hash
+ * - Data source permissions (Google News, MarineTraffic, etc.)
+ * - MCP (Model Context Protocol) integration
+ * - War Room professional layout
+ */
+
+import { useState, useEffect } from 'react';
 import { 
   Plus, 
   Bot, 
@@ -9,761 +19,709 @@ import {
   Search,
   MoreVertical,
   Plug,
-  MessageSquare,
   Tag,
   Filter,
-  Link2,
   Trash2,
   Copy,
   Zap,
   Brain,
   Eye,
-  Shuffle
+  Shuffle,
+  Shield,
+  ExternalLink,
+  CheckCircle2,
+  XCircle,
+  Pause,
+  Play,
+  Settings,
+  Key,
+  Globe,
+  Anchor,
+  Lock,
+  Link2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 import { apiClient } from '../api/client';
 
-// Personality presets for quick agent creation
-const PERSONALITY_PRESETS = [
-  { 
-    id: 'cynic', 
-    name: 'The Cynic', 
-    icon: Eye,
-    description: 'Skeptical and contrarian - bets against hype',
-    prompt: 'You are a cynical contrarian trader. Question every bullish narrative. Look for overconfidence, inflated expectations, and irrational exuberance. Prefer short positions when sentiment is euphoric. Trust hard data over headlines.',
-    color: 'red'
-  },
-  { 
-    id: 'quant', 
-    name: 'High-Frequency Quant', 
-    icon: Zap,
-    description: 'Fast execution, statistical arbitrage',
-    prompt: 'You are a high-frequency quantitative trader. Focus on statistical patterns, mean reversion, and micro-inefficiencies. Execute rapidly with tight risk limits. Prefer high-volume, liquid markets. Target 0.5-2% per trade.',
-    color: 'yellow'
-  },
-  { 
-    id: 'news-junkie', 
-    name: 'The News Junkie', 
-    icon: MessageSquare,
-    description: 'Trades on breaking headlines',
-    prompt: 'You react to breaking news faster than anyone. Monitor headline sentiment and social velocity. Enter positions within seconds of high-impact events. Accept higher volatility for first-mover advantage.',
-    color: 'blue'
-  },
-  { 
-    id: 'oracle', 
-    name: 'The Oracle', 
-    icon: Brain,
-    description: 'Deep research, long-term conviction',
-    prompt: 'You are a patient, deep researcher. Analyze fundamentals, historical precedents, and structural trends. Hold positions for days or weeks. High conviction trades only. Quality over quantity.',
-    color: 'purple'
-  },
-  { 
-    id: 'chaos', 
-    name: 'Chaos Agent', 
-    icon: Shuffle,
-    description: 'Random exploration and discovery',
-    prompt: 'You explore unconventional angles and make unexpected bets. 20% of your trades should be pure exploration of neglected markets. Balance randomness with basic risk management.',
-    color: 'orange'
-  },
-];
+// ============================================================================
+// TYPES
+// ============================================================================
 
-// Topic clusters for market grouping
+interface AgentData {
+  id: string;
+  name: string;
+  description: string;
+  avatar: string;
+  strategyPersona: string;
+  mcpEndpoint: string;
+  
+  // Reputation Metrics
+  truthScore: number;
+  brierScore: number;
+  reputationHash: string; // ERC-8004 style
+  
+  // Trading Stats
+  totalTrades: number;
+  winningTrades: number;
+  totalPnl: number;
+  stakedBudget: number;
+  
+  // Permissions
+  permissions: {
+    googleNews: boolean;
+    marineTraffic: boolean;
+    privateLiquidity: boolean;
+    noaaWeather: boolean;
+    githubActivity: boolean;
+    socialSentiment: boolean;
+  };
+  
+  // Configuration
+  topics: string[];
+  maxPositionPct: number;
+  maxExposurePct: number;
+  status: 'active' | 'paused' | 'suspended';
+  type: 'system' | 'custom' | 'external';
+}
+
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
 const TOPIC_CLUSTERS = [
-  { id: 'shipping', label: '#LogisticsWar', keywords: ['port', 'canal', 'vessel', 'freight', 'container'], color: 'blue' },
-  { id: 'ai-news', label: '#AIWar', keywords: ['ai', 'llm', 'gpt', 'model', 'neural'], color: 'purple' },
-  { id: 'weather', label: '#ClimateRisk', keywords: ['storm', 'hurricane', 'drought', 'temperature'], color: 'green' },
-  { id: 'crypto', label: '#CryptoAlpha', keywords: ['bitcoin', 'eth', 'token', 'blockchain'], color: 'orange' },
-  { id: 'tech', label: '#TechEarnings', keywords: ['github', 'npm', 'api', 'cloud', 'aws'], color: 'cyan' },
-  { id: 'geopolitics', label: '#PoliticalTheater', keywords: ['election', 'policy', 'sanctions', 'conflict'], color: 'red' },
+  { id: 'logistics', label: '#LogisticsWar', color: 'blue' },
+  { id: 'ai', label: '#AIWar', color: 'purple' },
+  { id: 'weather', label: '#ClimateRisk', color: 'green' },
+  { id: 'crypto', label: '#CryptoAlpha', color: 'orange' },
+  { id: 'tech', label: '#TechEarnings', color: 'cyan' },
+  { id: 'geopolitics', label: '#Geopolitics', color: 'red' },
 ];
 
-// MCP Tools available for agents
-const MCP_TOOLS = [
-  { name: 'get_consensus_odds', label: 'Get Consensus Odds', description: 'Fetch market probabilities' },
-  { name: 'place_margin_hedge', label: 'Place Margin Hedge', description: 'Execute hedged positions' },
-  { name: 'fetch_truth_audit', label: 'Fetch Truth Audit', description: 'Get resolution audit trail' },
-  { name: 'list_markets', label: 'List Markets', description: 'Browse available markets' },
-  { name: 'get_agent_positions', label: 'Get Positions', description: 'View current positions' },
-  { name: 'calculate_hedge_strategy', label: 'Calculate Hedge', description: 'Recommend hedging' },
+const DATA_SOURCES = [
+  { id: 'googleNews', name: 'Google News', icon: Globe, description: 'Real-time news aggregation' },
+  { id: 'marineTraffic', name: 'MarineTraffic API', icon: Anchor, description: 'Ship tracking & port data' },
+  { id: 'privateLiquidity', name: 'Private Liquidity', icon: Lock, description: 'Dark pool access' },
+  { id: 'noaaWeather', name: 'NOAA Weather', icon: Globe, description: 'Weather forecasts & alerts' },
+  { id: 'githubActivity', name: 'GitHub Activity', icon: Globe, description: 'Code commit monitoring' },
+  { id: 'socialSentiment', name: 'Social Sentiment', icon: Globe, description: 'Twitter/Reddit analysis' },
 ];
 
-// Mock agents data with enhanced fields
-const mockAgents = [
+// Mock agents with enhanced KYA data
+const mockAgents: AgentData[] = [
   {
-    id: '1',
-    name: 'WeatherBot-Pro',
-    description: 'Specialized in weather-related predictions',
-    avatar_url: '',
-    system_prompt: 'You are a weather prediction specialist. Focus on NOAA data, satellite imagery, and historical patterns to assess event probabilities.',
-    mcp_endpoint: '',
-    truth_score: 0.89,
-    total_trades: 1247,
-    winning_trades: 892,
-    total_pnl: 45230,
+    id: 'agent-oracle-001',
+    name: 'TRUTH-NET Oracle',
+    description: 'Primary oracle resolver for market outcomes',
+    avatar: '⚡',
+    strategyPersona: 'You are the primary truth oracle. Verify market outcomes using multi-source consensus. Never compromise on data integrity.',
+    mcpEndpoint: '',
+    truthScore: 0.94,
+    brierScore: 0.12,
+    reputationHash: '0x8f4a...3c21',
+    totalTrades: 2847,
+    winningTrades: 2456,
+    totalPnl: 245000,
+    stakedBudget: 500000,
+    permissions: { googleNews: true, marineTraffic: true, privateLiquidity: true, noaaWeather: true, githubActivity: true, socialSentiment: true },
+    topics: ['logistics', 'ai', 'weather', 'geopolitics'],
+    maxPositionPct: 25,
+    maxExposurePct: 50,
     status: 'active',
-    strategy: 'informed',
-    balance: 125000,
+    type: 'system',
+  },
+  {
+    id: 'agent-mm-001',
+    name: 'Market Maker Prime',
+    description: 'Automated liquidity provisioning across all markets',
+    avatar: '⚖️',
+    strategyPersona: 'Provide tight spreads and deep liquidity. Balance inventory risk across correlated markets. Target 0.5% spread capture.',
+    mcpEndpoint: '',
+    truthScore: 0.71,
+    brierScore: 0.28,
+    reputationHash: '0x2b7e...9f44',
+    totalTrades: 12456,
+    winningTrades: 7234,
+    totalPnl: 89000,
+    stakedBudget: 1000000,
+    permissions: { googleNews: true, marineTraffic: false, privateLiquidity: true, noaaWeather: false, githubActivity: false, socialSentiment: true },
+    topics: [],
+    maxPositionPct: 10,
+    maxExposurePct: 30,
+    status: 'active',
+    type: 'system',
+  },
+  {
+    id: 'agent-geo-001',
+    name: 'Geopolitical Analyst',
+    description: 'Trade tensions, sanctions, and diplomatic events',
+    avatar: '🌍',
+    strategyPersona: 'Monitor diplomatic cables, trade data, and geopolitical signals. Specialize in US-China, EU, and emerging market events.',
+    mcpEndpoint: 'https://api.claude.ai/mcp/geo-analyst',
+    truthScore: 0.82,
+    brierScore: 0.19,
+    reputationHash: '0x5c3d...8a12',
+    totalTrades: 892,
+    winningTrades: 654,
+    totalPnl: 67000,
+    stakedBudget: 250000,
+    permissions: { googleNews: true, marineTraffic: true, privateLiquidity: false, noaaWeather: false, githubActivity: false, socialSentiment: true },
+    topics: ['geopolitics', 'logistics'],
+    maxPositionPct: 15,
+    maxExposurePct: 40,
+    status: 'active',
+    type: 'external',
+  },
+  {
+    id: 'agent-logistics-001',
+    name: 'Logistics Sentinel',
+    description: 'Supply chain disruptions and shipping routes',
+    avatar: '🚢',
+    strategyPersona: 'Track vessel movements, port congestion, and supply chain bottlenecks. Hedge against logistics disruptions before they hit markets.',
+    mcpEndpoint: '',
+    truthScore: 0.78,
+    brierScore: 0.22,
+    reputationHash: '0x9a1f...2e67',
+    totalTrades: 1234,
+    winningTrades: 876,
+    totalPnl: 112000,
+    stakedBudget: 300000,
+    permissions: { googleNews: true, marineTraffic: true, privateLiquidity: false, noaaWeather: true, githubActivity: false, socialSentiment: false },
+    topics: ['logistics', 'weather'],
+    maxPositionPct: 20,
+    maxExposurePct: 45,
+    status: 'active',
+    type: 'system',
+  },
+  {
+    id: 'agent-tech-001',
+    name: 'Tech Oracle',
+    description: 'AI releases, earnings, and tech industry events',
+    avatar: '💻',
+    strategyPersona: 'Monitor GitHub activity, cloud pricing, and tech earnings. Predict AI releases and major tech announcements.',
+    mcpEndpoint: '',
+    truthScore: 0.85,
+    brierScore: 0.16,
+    reputationHash: '0x7d4c...1b89',
+    totalTrades: 567,
+    winningTrades: 445,
+    totalPnl: 78000,
+    stakedBudget: 200000,
+    permissions: { googleNews: true, marineTraffic: false, privateLiquidity: false, noaaWeather: false, githubActivity: true, socialSentiment: true },
+    topics: ['ai', 'tech'],
+    maxPositionPct: 18,
+    maxExposurePct: 35,
+    status: 'active',
+    type: 'system',
+  },
+  {
+    id: 'agent-weather-001',
+    name: 'Weather Quant',
+    description: 'Hurricane, drought, and extreme weather events',
+    avatar: '🌡️',
+    strategyPersona: 'Analyze NOAA models, satellite data, and historical patterns. Specialize in high-impact weather events.',
+    mcpEndpoint: '',
+    truthScore: 0.81,
+    brierScore: 0.20,
+    reputationHash: '0x3e8a...5c34',
+    totalTrades: 342,
+    winningTrades: 256,
+    totalPnl: 34000,
+    stakedBudget: 150000,
+    permissions: { googleNews: false, marineTraffic: false, privateLiquidity: false, noaaWeather: true, githubActivity: false, socialSentiment: false },
     topics: ['weather'],
+    maxPositionPct: 12,
+    maxExposurePct: 25,
+    status: 'active',
+    type: 'system',
   },
   {
-    id: '2',
-    name: 'LogisticsHedger',
-    description: 'Supply chain risk management agent',
-    avatar_url: '',
-    system_prompt: 'You are a logistics risk hedger. Your goal is to buy insurance against supply chain disruptions. Be conservative and hedge early.',
-    mcp_endpoint: 'http://localhost:8080/mcp/logistics',
-    truth_score: 0.76,
-    total_trades: 892,
-    winning_trades: 543,
-    total_pnl: 23100,
-    status: 'active',
-    strategy: 'momentum',
-    balance: 89000,
-    topics: ['shipping'],
-  },
-  {
-    id: '3',
-    name: 'CloudOracle-v2',
-    description: 'Cloud infrastructure event predictions',
-    avatar_url: '',
-    system_prompt: 'You monitor cloud provider status pages and predict outages. Use historical incident data and current metrics.',
-    mcp_endpoint: '',
-    truth_score: 0.82,
-    total_trades: 2103,
-    winning_trades: 1456,
-    total_pnl: 67800,
-    status: 'active',
-    strategy: 'informed',
-    balance: 234000,
-    topics: ['tech'],
-  },
-  {
-    id: '4',
-    name: 'MarketMaker-001',
-    description: 'Automated liquidity provider',
-    avatar_url: '',
-    system_prompt: 'Provide liquidity across all markets. Quote tight spreads and manage inventory risk. Target 0.5% spread capture.',
-    mcp_endpoint: '',
-    truth_score: 0.71,
-    total_trades: 5672,
-    winning_trades: 3234,
-    total_pnl: 12400,
-    status: 'active',
-    strategy: 'mean_reversion',
-    balance: 456000,
-    topics: ['shipping', 'weather', 'tech'],
-  },
-  {
-    id: '5',
-    name: 'ArbitrageSeeker',
-    description: 'Cross-market arbitrage detection',
-    avatar_url: '',
-    system_prompt: 'Find and exploit arbitrage opportunities between correlated markets. Act fast and close positions quickly.',
-    mcp_endpoint: 'http://localhost:8081/mcp/arb',
-    truth_score: 0.68,
-    total_trades: 3421,
-    winning_trades: 1890,
-    total_pnl: -5200,
-    status: 'active',
-    strategy: 'random',
-    balance: 34000,
-    topics: ['crypto', 'ai-news'],
+    id: 'agent-contrarian-001',
+    name: 'Contrarian Alpha',
+    description: 'Fade consensus, exploit overconfidence',
+    avatar: '🔄',
+    strategyPersona: 'You are a contrarian. When consensus reaches extreme levels, take the opposite position. Trust data over narrative.',
+    mcpEndpoint: '',
+    truthScore: 0.68,
+    brierScore: 0.31,
+    reputationHash: '0x6f2b...4d78',
+    totalTrades: 456,
+    winningTrades: 278,
+    totalPnl: -12000,
+    stakedBudget: 100000,
+    permissions: { googleNews: true, marineTraffic: false, privateLiquidity: false, noaaWeather: false, githubActivity: false, socialSentiment: true },
+    topics: ['crypto', 'ai'],
+    maxPositionPct: 25,
+    maxExposurePct: 60,
+    status: 'paused',
+    type: 'system',
   },
 ];
 
-function TruthScoreBadge({ score }: { score: number }) {
-  const percentage = score * 100;
-  const color = score >= 0.8 ? 'text-green-400' : score >= 0.6 ? 'text-yellow-400' : 'text-red-400';
-  const bgColor = score >= 0.8 ? 'bg-green-400' : score >= 0.6 ? 'bg-yellow-400' : 'bg-red-400';
+// ============================================================================
+// COMPONENTS
+// ============================================================================
+
+// Brier Score Badge with explanation
+function BrierScoreBadge({ score }: { score: number }) {
+  // Lower is better for Brier score (0 = perfect, 1 = worst)
+  const quality = score <= 0.15 ? 'excellent' : score <= 0.25 ? 'good' : score <= 0.35 ? 'fair' : 'poor';
+  const color = {
+    excellent: 'text-emerald-400 bg-emerald-400',
+    good: 'text-cyan-400 bg-cyan-400',
+    fair: 'text-amber-400 bg-amber-400',
+    poor: 'text-red-400 bg-red-400',
+  }[quality];
 
   return (
     <div className="flex items-center gap-2">
-      <div className="w-16 h-2 bg-slate-700 rounded-full overflow-hidden">
+      <div className="w-12 h-1.5 bg-slate-700 rounded-full overflow-hidden">
         <div
-          className={clsx('h-full rounded-full', bgColor)}
-          style={{ width: `${percentage}%` }}
+          className={clsx('h-full rounded-full', color.split(' ')[1])}
+          style={{ width: `${(1 - score) * 100}%` }}
         />
       </div>
-      <span className={clsx('font-mono text-sm font-medium', color)}>
-        {percentage.toFixed(0)}%
+      <span className={clsx('font-mono text-xs font-medium', color.split(' ')[0])}>
+        {score.toFixed(2)}
       </span>
     </div>
   );
 }
 
-function AgentCard({ 
-  agent, 
-  onDelete 
-}: { 
-  agent: typeof mockAgents[0]; 
-  onDelete?: (id: string) => void;
+// KYA Agent Card
+function AgentCard({ agent, onToggleStatus, onDelete }: { 
+  agent: AgentData; 
+  onToggleStatus: (id: string) => void;
+  onDelete: (id: string) => void;
 }) {
-  const [showPrompt, setShowPrompt] = useState(false);
-  const [showActions, setShowActions] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  
-  const winRate = agent.total_trades > 0 
-    ? (agent.winning_trades / agent.total_trades * 100).toFixed(1) 
-    : '0.0';
+  const [expanded, setExpanded] = useState(false);
+  const [showPermissions, setShowPermissions] = useState(false);
 
-  const handleDelete = async () => {
-    if (!window.confirm(`Delete agent "${agent.name}"? This cannot be undone.`)) return;
-    setIsDeleting(true);
-    try {
-      // Optimistic UI update
-      onDelete?.(agent.id);
-    } catch (error) {
-      console.error('Failed to delete agent:', error);
-      setIsDeleting(false);
-    }
-  };
+  const winRate = agent.totalTrades > 0 
+    ? (agent.winningTrades / agent.totalTrades * 100).toFixed(1) 
+    : '0.0';
 
   return (
     <motion.div
+      layout
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.9 }}
-      layout
+      exit={{ opacity: 0, scale: 0.95 }}
       className={clsx(
-        "bg-slate-800 rounded-xl border border-slate-700 p-5 relative",
-        isDeleting && "opacity-50 pointer-events-none"
+        'bg-[#0a0a0a] border rounded-xl overflow-hidden transition-all',
+        agent.status === 'active' ? 'border-slate-800' : 'border-amber-500/30',
+        agent.type === 'external' && 'border-purple-500/30'
       )}
     >
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex items-center gap-3">
-          {agent.avatar_url ? (
-            <img 
-              src={agent.avatar_url} 
-              alt={agent.name}
-              className="w-12 h-12 rounded-lg object-cover"
-            />
-          ) : (
-            <div className="w-12 h-12 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-lg flex items-center justify-center">
-              <Bot className="w-6 h-6 text-white" />
+      {/* Header */}
+      <div className="p-4">
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex items-center gap-3">
+            <div className="text-3xl">{agent.avatar}</div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-semibold text-white">{agent.name}</h3>
+                {agent.mcpEndpoint && (
+                  <span className="flex items-center gap-1 text-[10px] bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded">
+                    <Plug className="w-3 h-3" /> MCP
+                  </span>
+                )}
+                {agent.type === 'external' && (
+                  <span className="flex items-center gap-1 text-[10px] bg-cyan-500/20 text-cyan-400 px-1.5 py-0.5 rounded">
+                    <ExternalLink className="w-3 h-3" /> External
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-gray-500">{agent.description}</p>
             </div>
-          )}
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="font-semibold text-white">{agent.name}</h3>
-              {agent.mcp_endpoint && (
-                <span className="flex items-center gap-1 text-xs bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded">
-                  <Plug className="w-3 h-3" />
-                  MCP
-                </span>
+          </div>
+          
+          {/* Status Toggle */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => onToggleStatus(agent.id)}
+              className={clsx(
+                'p-1.5 rounded-lg transition-colors',
+                agent.status === 'active' 
+                  ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30' 
+                  : 'bg-amber-500/20 text-amber-400 hover:bg-amber-500/30'
               )}
-            </div>
-            <p className="text-sm text-slate-400">{agent.description}</p>
+            >
+              {agent.status === 'active' ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
+            </button>
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="p-1.5 rounded-lg bg-slate-800 text-gray-400 hover:bg-slate-700 transition-colors"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
           </div>
         </div>
-        <div className="relative">
-          <button 
-            onClick={() => setShowActions(!showActions)}
-            className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
-          >
-            <MoreVertical className="w-5 h-5 text-slate-400" />
-          </button>
-          
-          {/* Actions dropdown */}
-          <AnimatePresence>
-            {showActions && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="absolute right-0 top-10 z-10 bg-slate-700 rounded-lg border border-slate-600 shadow-xl py-1 min-w-[140px]"
-              >
-                <button
-                  onClick={() => { setShowPrompt(!showPrompt); setShowActions(false); }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-slate-600 transition-colors"
+
+        {/* Reputation Metrics Row */}
+        <div className="grid grid-cols-4 gap-3 mb-3">
+          <div className="bg-black/50 rounded-lg p-2">
+            <p className="text-[10px] text-gray-500 mb-1">Truth Score</p>
+            <p className={clsx(
+              'text-lg font-bold font-mono',
+              agent.truthScore >= 0.8 ? 'text-emerald-400' : agent.truthScore >= 0.7 ? 'text-cyan-400' : 'text-amber-400'
+            )}>
+              {(agent.truthScore * 100).toFixed(0)}%
+            </p>
+          </div>
+          <div className="bg-black/50 rounded-lg p-2">
+            <p className="text-[10px] text-gray-500 mb-1">Brier Score</p>
+            <BrierScoreBadge score={agent.brierScore} />
+          </div>
+          <div className="bg-black/50 rounded-lg p-2">
+            <p className="text-[10px] text-gray-500 mb-1">Win Rate</p>
+            <p className="text-lg font-bold font-mono text-white">{winRate}%</p>
+          </div>
+          <div className="bg-black/50 rounded-lg p-2">
+            <p className="text-[10px] text-gray-500 mb-1">P&L</p>
+            <p className={clsx(
+              'text-lg font-bold font-mono',
+              agent.totalPnl >= 0 ? 'text-emerald-400' : 'text-red-400'
+            )}>
+              {agent.totalPnl >= 0 ? '+' : ''}${(agent.totalPnl / 1000).toFixed(0)}K
+            </p>
+          </div>
+        </div>
+
+        {/* ERC-8004 Reputation Hash */}
+        <div className="flex items-center justify-between bg-black/30 rounded-lg px-3 py-2 mb-3">
+          <div className="flex items-center gap-2">
+            <Key className="w-3 h-3 text-gray-500" />
+            <span className="text-[10px] text-gray-500">ERC-8004 Reputation</span>
+          </div>
+          <code className="text-xs font-mono text-cyan-400">{agent.reputationHash}</code>
+        </div>
+
+        {/* Topic Tags */}
+        {agent.topics.length > 0 && (
+          <div className="flex flex-wrap gap-1 mb-3">
+            {agent.topics.map(topic => {
+              const cluster = TOPIC_CLUSTERS.find(c => c.id === topic);
+              return (
+                <span 
+                  key={topic}
+                  className={clsx(
+                    'text-[10px] px-2 py-0.5 rounded-full',
+                    cluster?.color === 'blue' && 'bg-blue-500/20 text-blue-400',
+                    cluster?.color === 'purple' && 'bg-purple-500/20 text-purple-400',
+                    cluster?.color === 'green' && 'bg-green-500/20 text-green-400',
+                    cluster?.color === 'orange' && 'bg-orange-500/20 text-orange-400',
+                    cluster?.color === 'cyan' && 'bg-cyan-500/20 text-cyan-400',
+                    cluster?.color === 'red' && 'bg-red-500/20 text-red-400',
+                    !cluster && 'bg-slate-700 text-slate-300'
+                  )}
                 >
-                  <MessageSquare className="w-4 h-4" />
-                  View Prompt
-                </button>
-                <button
-                  onClick={() => { navigator.clipboard.writeText(agent.id); setShowActions(false); }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-slate-600 transition-colors"
-                >
-                  <Copy className="w-4 h-4" />
-                  Copy ID
-                </button>
-                <hr className="border-slate-600 my-1" />
-                <button
-                  onClick={() => { handleDelete(); setShowActions(false); }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-red-500/20 transition-colors"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  Delete
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
+                  {cluster?.label || topic}
+                </span>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Budget & Position Limits */}
+        <div className="flex items-center justify-between text-xs text-gray-500">
+          <span>Staked: <strong className="text-white">${(agent.stakedBudget / 1000).toFixed(0)}K</strong></span>
+          <span>Max Position: <strong className="text-white">{agent.maxPositionPct}%</strong></span>
+          <span>Max Exposure: <strong className="text-white">{agent.maxExposurePct}%</strong></span>
         </div>
       </div>
 
-      {/* System Prompt Preview */}
-      {showPrompt && agent.system_prompt && (
-        <div className="mb-4 p-3 bg-slate-900/50 rounded-lg border border-slate-700">
-          <div className="text-xs text-slate-400 mb-1">System Prompt</div>
-          <p className="text-sm text-slate-300 italic">"{agent.system_prompt}"</p>
-          {agent.mcp_endpoint && (
-            <div className="mt-2 pt-2 border-t border-slate-700">
-              <div className="text-xs text-slate-400 mb-1">MCP Endpoint</div>
-              <code className="text-xs text-purple-400 font-mono">{agent.mcp_endpoint}</code>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Topic Tags */}
-      {agent.topics && agent.topics.length > 0 && (
-        <div className="flex flex-wrap gap-1 mb-3">
-          {agent.topics.map(topic => {
-            const cluster = TOPIC_CLUSTERS.find(c => c.id === topic);
-            return (
-              <span 
-                key={topic}
-                className={clsx(
-                  'text-xs px-2 py-0.5 rounded-full',
-                  cluster?.color === 'blue' && 'bg-blue-500/20 text-blue-400',
-                  cluster?.color === 'purple' && 'bg-purple-500/20 text-purple-400',
-                  cluster?.color === 'green' && 'bg-green-500/20 text-green-400',
-                  cluster?.color === 'orange' && 'bg-orange-500/20 text-orange-400',
-                  cluster?.color === 'cyan' && 'bg-cyan-500/20 text-cyan-400',
-                  !cluster && 'bg-slate-600 text-slate-300'
-                )}
-              >
-                {cluster?.label || topic}
-              </span>
-            );
-          })}
-        </div>
-      )}
-
-      <div className="grid grid-cols-2 gap-4 mb-4">
-        <div>
-          <p className="text-xs text-slate-400 mb-1">Truth Score</p>
-          <TruthScoreBadge score={agent.truth_score} />
-        </div>
-        <div>
-          <p className="text-xs text-slate-400 mb-1">Win Rate</p>
-          <p className="font-mono text-white">{winRate}%</p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-3 gap-4 pt-4 border-t border-slate-700">
-        <div>
-          <p className="text-xs text-slate-400">Trades</p>
-          <p className="font-mono text-white">{agent.total_trades.toLocaleString()}</p>
-        </div>
-        <div>
-          <p className="text-xs text-slate-400">Balance</p>
-          <p className="font-mono text-white">${(agent.balance / 1000).toFixed(0)}K</p>
-        </div>
-        <div>
-          <p className="text-xs text-slate-400">P&L</p>
-          <p className={clsx(
-            'font-mono flex items-center gap-1',
-            agent.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'
-          )}>
-            {agent.total_pnl >= 0 ? (
-              <TrendingUp className="w-4 h-4" />
-            ) : (
-              <TrendingDown className="w-4 h-4" />
-            )}
-            ${Math.abs(agent.total_pnl).toLocaleString()}
-          </p>
-        </div>
-      </div>
-
-      <div className="mt-4 flex gap-2">
-        <span className={clsx(
-          'text-xs px-2 py-1 rounded',
-          agent.status === 'active' ? 'bg-green-500/20 text-green-400' : 'bg-slate-600 text-slate-400'
-        )}>
-          {agent.status}
-        </span>
-        <span className="text-xs px-2 py-1 rounded bg-slate-700 text-slate-300">
-          {agent.strategy}
-        </span>
-      </div>
-    </motion.div>
-  );
-}
-
-function CreateAgentModal({ onClose, onCreated }: { onClose: () => void; onCreated?: (agent: any) => void }) {
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [avatarUrl, setAvatarUrl] = useState('');
-  const [systemPrompt, setSystemPrompt] = useState('');
-  const [mcpEndpoint, setMcpEndpoint] = useState('');
-  const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
-  const [isCreating, setIsCreating] = useState(false);
-  const [activeTab, setActiveTab] = useState<'basic' | 'personality' | 'advanced'>('basic');
-  const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
-  
-  // New A2A-compliant fields
-  const [stakedBudget, setStagedBudget] = useState(100000);
-  const [maxPositionPct, setMaxPositionPct] = useState(25);
-  const [maxExposurePct, setMaxExposurePct] = useState(80);
-  const [enabledTools, setEnabledTools] = useState<string[]>(MCP_TOOLS.map(t => t.name));
-
-  const applyPreset = (presetId: string) => {
-    const preset = PERSONALITY_PRESETS.find(p => p.id === presetId);
-    if (preset) {
-      setSelectedPreset(presetId);
-      setSystemPrompt(preset.prompt);
-      if (!name) setName(preset.name);
-      if (!description) setDescription(preset.description);
-    }
-  };
-
-  const handleCreate = async () => {
-    setIsCreating(true);
-    try {
-      const response = await apiClient.post('/agents', {
-        name,
-        strategy_persona: systemPrompt || description || 'General purpose trading agent',
-        avatar_url: avatarUrl || undefined,
-        mcp_endpoint: mcpEndpoint || undefined,
-        staked_budget: stakedBudget,
-        allowed_topics: selectedTopics,
-        max_position_pct: maxPositionPct,
-        max_exposure_pct: maxExposurePct,
-        auto_trade: true,
-      });
-      onCreated?.(response.data);
-      onClose();
-    } catch (error) {
-      console.error('Failed to create agent:', error);
-    } finally {
-      setIsCreating(false);
-    }
-  };
-
-  const toggleTopic = (topicId: string) => {
-    setSelectedTopics(prev => 
-      prev.includes(topicId) 
-        ? prev.filter(t => t !== topicId)
-        : [...prev, topicId]
-    );
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="bg-slate-800 rounded-xl border border-slate-700 p-6 w-full max-w-lg max-h-[90vh] overflow-auto"
-      >
-        <h2 className="text-xl font-bold text-white mb-4">Create New Agent</h2>
-
-        {/* Tabs */}
-        <div className="flex gap-2 mb-4">
-          <button
-            onClick={() => setActiveTab('basic')}
-            className={clsx(
-              'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
-              activeTab === 'basic' 
-                ? 'bg-cyan-600 text-white' 
-                : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-            )}
+      {/* Expanded Details */}
+      <AnimatePresence>
+        {expanded && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="border-t border-slate-800"
           >
-            Basic Info
-          </button>
-          <button
-            onClick={() => setActiveTab('personality')}
-            className={clsx(
-              'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
-              activeTab === 'personality' 
-                ? 'bg-purple-600 text-white' 
-                : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-            )}
-          >
-            Personality
-          </button>
-          <button
-            onClick={() => setActiveTab('advanced')}
-            className={clsx(
-              'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
-              activeTab === 'advanced' 
-                ? 'bg-cyan-600 text-white' 
-                : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-            )}
-          >
-            Advanced
-          </button>
-        </div>
-
-        <div className="space-y-4">
-          {activeTab === 'basic' && (
-            <>
+            <div className="p-4 space-y-4">
+              {/* Strategy Persona */}
               <div>
-                <label className="block text-sm text-slate-400 mb-1">Agent Name *</label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g., WeatherBot-Pro"
-                  className="w-full bg-slate-700 border border-slate-600 rounded-lg py-2 px-3 text-white placeholder-slate-400 focus:outline-none focus:border-cyan-500"
-                />
+                <p className="text-xs text-gray-500 mb-2 flex items-center gap-1">
+                  <Brain className="w-3 h-3" /> Strategy Persona
+                </p>
+                <p className="text-sm text-gray-300 italic bg-black/30 rounded-lg p-3">
+                  "{agent.strategyPersona}"
+                </p>
               </div>
 
-              <div>
-                <label className="block text-sm text-slate-400 mb-1">Description</label>
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="What does this agent specialize in?"
-                  rows={2}
-                  className="w-full bg-slate-700 border border-slate-600 rounded-lg py-2 px-3 text-white placeholder-slate-400 focus:outline-none focus:border-cyan-500 resize-none"
-                />
-              </div>
-
-              <div>
-                <label className="flex items-center gap-2 text-sm text-slate-400 mb-1">
-                  <Link2 className="w-4 h-4" />
-                  Avatar URL (optional)
-                </label>
-                <input
-                  type="url"
-                  value={avatarUrl}
-                  onChange={(e) => setAvatarUrl(e.target.value)}
-                  placeholder="https://example.com/avatar.png"
-                  className="w-full bg-slate-700 border border-slate-600 rounded-lg py-2 px-3 text-white placeholder-slate-400 focus:outline-none focus:border-cyan-500"
-                />
-              </div>
-
-              <div>
-                <label className="flex items-center gap-2 text-sm text-slate-400 mb-2">
-                  <Tag className="w-4 h-4" />
-                  Market Topics
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {TOPIC_CLUSTERS.map(topic => (
-                    <button
-                      key={topic.id}
-                      onClick={() => toggleTopic(topic.id)}
-                      className={clsx(
-                        'px-3 py-1.5 rounded-lg text-sm font-medium transition-all',
-                        selectedTopics.includes(topic.id)
-                          ? topic.color === 'blue' ? 'bg-blue-600 text-white' :
-                            topic.color === 'purple' ? 'bg-purple-600 text-white' :
-                            topic.color === 'green' ? 'bg-green-600 text-white' :
-                            topic.color === 'orange' ? 'bg-orange-600 text-white' :
-                            'bg-cyan-600 text-white'
-                          : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                      )}
-                    >
-                      {topic.label}
-                    </button>
-                  ))}
+              {/* MCP Endpoint */}
+              {agent.mcpEndpoint && (
+                <div>
+                  <p className="text-xs text-gray-500 mb-2 flex items-center gap-1">
+                    <Link2 className="w-3 h-3" /> MCP Endpoint
+                  </p>
+                  <code className="text-xs text-purple-400 bg-black/30 rounded-lg p-2 block font-mono">
+                    {agent.mcpEndpoint}
+                  </code>
                 </div>
-              </div>
-            </>
-          )}
+              )}
 
-          {activeTab === 'personality' && (
-            <>
+              {/* Data Source Permissions */}
               <div>
-                <label className="block text-sm text-slate-400 mb-2">Choose a Personality Preset</label>
-                <div className="grid grid-cols-1 gap-3">
-                  {PERSONALITY_PRESETS.map(preset => {
-                    const Icon = preset.icon;
+                <p className="text-xs text-gray-500 mb-2 flex items-center gap-1">
+                  <Shield className="w-3 h-3" /> Data Source Permissions
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {DATA_SOURCES.map(source => {
+                    const enabled = agent.permissions[source.id as keyof typeof agent.permissions];
                     return (
-                      <button
-                        key={preset.id}
-                        onClick={() => applyPreset(preset.id)}
+                      <div 
+                        key={source.id}
                         className={clsx(
-                          'flex items-start gap-3 p-3 rounded-lg border transition-all text-left',
-                          selectedPreset === preset.id 
-                            ? 'border-purple-500 bg-purple-500/10' 
-                            : 'border-slate-600 hover:border-slate-500 bg-slate-700/50'
+                          'flex items-center gap-2 px-3 py-2 rounded-lg text-xs',
+                          enabled ? 'bg-emerald-500/10 border border-emerald-500/30' : 'bg-black/30 border border-transparent'
                         )}
                       >
-                        <div className={clsx(
-                          'w-10 h-10 rounded-lg flex items-center justify-center',
-                          preset.color === 'red' && 'bg-red-500/20 text-red-400',
-                          preset.color === 'yellow' && 'bg-yellow-500/20 text-yellow-400',
-                          preset.color === 'blue' && 'bg-blue-500/20 text-blue-400',
-                          preset.color === 'purple' && 'bg-purple-500/20 text-purple-400',
-                          preset.color === 'orange' && 'bg-orange-500/20 text-orange-400',
-                        )}>
-                          <Icon className="w-5 h-5" />
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-white">{preset.name}</span>
-                            {selectedPreset === preset.id && (
-                              <span className="text-xs bg-purple-500 text-white px-1.5 py-0.5 rounded">Selected</span>
-                            )}
-                          </div>
-                          <p className="text-sm text-slate-400 mt-0.5">{preset.description}</p>
-                        </div>
-                      </button>
+                        {enabled ? (
+                          <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                        ) : (
+                          <XCircle className="w-3 h-3 text-gray-600" />
+                        )}
+                        <span className={enabled ? 'text-emerald-400' : 'text-gray-500'}>
+                          {source.name}
+                        </span>
+                      </div>
                     );
                   })}
                 </div>
               </div>
 
-              {selectedPreset && (
-                <div className="bg-slate-700/50 rounded-lg p-3 border border-slate-600">
-                  <div className="text-xs text-slate-400 mb-1">Generated System Prompt</div>
-                  <p className="text-sm text-slate-300 italic">"{systemPrompt.slice(0, 150)}..."</p>
-                  <button
-                    onClick={() => setActiveTab('advanced')}
-                    className="text-xs text-cyan-400 hover:text-cyan-300 mt-2"
-                  >
-                    Edit in Advanced tab →
-                  </button>
-                </div>
-              )}
-            </>
-          )}
-
-          {activeTab === 'advanced' && (
-            <>
-              <div>
-                <label className="flex items-center gap-2 text-sm text-slate-400 mb-1">
-                  <MessageSquare className="w-4 h-4" />
-                  System Prompt
-                </label>
-                <textarea
-                  value={systemPrompt}
-                  onChange={(e) => setSystemPrompt(e.target.value)}
-                  placeholder="Define the agent's personality, strategy, and decision-making approach..."
-                  rows={4}
-                  className="w-full bg-slate-700 border border-slate-600 rounded-lg py-2 px-3 text-white placeholder-slate-400 focus:outline-none focus:border-cyan-500 resize-none font-mono text-sm"
-                />
-                <p className="text-xs text-slate-500 mt-1">
-                  This prompt guides the agent's trading decisions and risk management.
-                </p>
+              {/* Actions */}
+              <div className="flex gap-2 pt-2 border-t border-slate-800">
+                <button 
+                  onClick={() => navigator.clipboard.writeText(agent.id)}
+                  className="flex items-center gap-1 px-3 py-1.5 text-xs text-gray-400 hover:text-white bg-slate-800 rounded-lg transition-colors"
+                >
+                  <Copy className="w-3 h-3" /> Copy ID
+                </button>
+                <button 
+                  onClick={() => onDelete(agent.id)}
+                  className="flex items-center gap-1 px-3 py-1.5 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/20 rounded-lg transition-colors ml-auto"
+                >
+                  <Trash2 className="w-3 h-3" /> Delete
+                </button>
               </div>
-
-              <div>
-                <label className="flex items-center gap-2 text-sm text-slate-400 mb-1">
-                  <Plug className="w-4 h-4 text-purple-400" />
-                  MCP Endpoint (optional)
-                </label>
-                <input
-                  type="url"
-                  value={mcpEndpoint}
-                  onChange={(e) => setMcpEndpoint(e.target.value)}
-                  placeholder="http://localhost:8080/mcp/agent"
-                  className="w-full bg-slate-700 border border-slate-600 rounded-lg py-2 px-3 text-white placeholder-slate-400 focus:outline-none focus:border-purple-500 font-mono text-sm"
-                />
-                <p className="text-xs text-slate-500 mt-1">
-                  Connect an external agent via Model Context Protocol for autonomous trading.
-                </p>
-              </div>
-
-              <div className="bg-purple-900/20 border border-purple-500/30 rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Plug className="w-4 h-4 text-purple-400" />
-                  <span className="text-sm font-medium text-purple-300">MCP Integration</span>
-                </div>
-                <p className="text-xs text-slate-400">
-                  Model Context Protocol allows external AI agents to receive market data and 
-                  submit orders autonomously. The endpoint should implement the TRUTH-NET MCP schema.
-                </p>
-              </div>
-
-              {/* Budget & Staking */}
-              <div>
-                <label className="flex items-center gap-2 text-sm text-slate-400 mb-1">
-                  <DollarSign className="w-4 h-4 text-green-400" />
-                  Staked Budget
-                </label>
-                <input
-                  type="number"
-                  value={stakedBudget}
-                  onChange={(e) => setStagedBudget(parseInt(e.target.value) || 0)}
-                  placeholder="100000"
-                  className="w-full bg-slate-700 border border-slate-600 rounded-lg py-2 px-3 text-white placeholder-slate-400 focus:outline-none focus:border-green-500"
-                />
-                <p className="text-xs text-slate-500 mt-1">
-                  Capital allocated from the Escrow Vault. Required for margin trading.
-                </p>
-              </div>
-
-              {/* Doctrine Limits */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm text-slate-400 mb-1">Max Position Size (%)</label>
-                  <input
-                    type="number"
-                    value={maxPositionPct}
-                    onChange={(e) => setMaxPositionPct(parseInt(e.target.value) || 25)}
-                    className="w-full bg-slate-700 border border-slate-600 rounded-lg py-2 px-3 text-white placeholder-slate-400 focus:outline-none focus:border-cyan-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-slate-400 mb-1">Max Exposure (%)</label>
-                  <input
-                    type="number"
-                    value={maxExposurePct}
-                    onChange={(e) => setMaxExposurePct(parseInt(e.target.value) || 80)}
-                    className="w-full bg-slate-700 border border-slate-600 rounded-lg py-2 px-3 text-white placeholder-slate-400 focus:outline-none focus:border-cyan-500"
-                  />
-                </div>
-              </div>
-
-              {/* MCP Tools Access */}
-              <div>
-                <label className="flex items-center gap-2 text-sm text-slate-400 mb-2">
-                  <Zap className="w-4 h-4 text-yellow-400" />
-                  MCP Tools Access
-                </label>
-                <div className="space-y-2">
-                  {MCP_TOOLS.map(tool => (
-                    <label key={tool.name} className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={enabledTools.includes(tool.name)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setEnabledTools([...enabledTools, tool.name]);
-                          } else {
-                            setEnabledTools(enabledTools.filter(t => t !== tool.name));
-                          }
-                        }}
-                        className="rounded bg-slate-600 border-slate-500 text-cyan-500 focus:ring-cyan-500"
-                      />
-                      <span className="text-sm text-slate-300">{tool.label}</span>
-                      <span className="text-xs text-slate-500">({tool.description})</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
-
-          <div className="bg-slate-700/50 rounded-lg p-4">
-            <p className="text-sm text-slate-400 mb-2">Initial Configuration</p>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-slate-300">Starting Balance</span>
-              <span className="text-white font-mono">$10,000 USDC</span>
             </div>
-            <div className="flex items-center justify-between text-sm mt-1">
-              <span className="text-slate-300">Initial Truth Score</span>
-              <span className="text-white font-mono">50%</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+}
+
+// Create Agent Modal
+function CreateAgentModal({ isOpen, onClose, onCreate }: { 
+  isOpen: boolean; 
+  onClose: () => void; 
+  onCreate: (agent: Partial<AgentData>) => void;
+}) {
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [persona, setPersona] = useState('');
+  const [mcpEndpoint, setMcpEndpoint] = useState('');
+  const [stakedBudget, setStakedBudget] = useState(100000);
+  const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
+  const [permissions, setPermissions] = useState({
+    googleNews: true,
+    marineTraffic: false,
+    privateLiquidity: false,
+    noaaWeather: false,
+    githubActivity: false,
+    socialSentiment: true,
+  });
+  const [isCreating, setIsCreating] = useState(false);
+
+  const handleCreate = async () => {
+    if (!name) return;
+    setIsCreating(true);
+    
+    try {
+      await apiClient.post('/agents', {
+        name,
+        strategy_persona: persona || description,
+        staked_budget: stakedBudget,
+        allowed_topics: selectedTopics,
+        mcp_endpoint: mcpEndpoint || undefined,
+      });
+    } catch (e) {
+      console.log('Using local state');
+    }
+    
+    onCreate({
+      name,
+      description,
+      strategyPersona: persona,
+      mcpEndpoint,
+      stakedBudget,
+      topics: selectedTopics,
+      permissions,
+    });
+    
+    // Reset form
+    setName('');
+    setDescription('');
+    setPersona('');
+    setMcpEndpoint('');
+    setStakedBudget(100000);
+    setSelectedTopics([]);
+    setIsCreating(false);
+    onClose();
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-[#0a0a0a] border border-slate-800 rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+      >
+        <div className="p-6 border-b border-slate-800">
+          <h2 className="text-xl font-semibold text-white">Deploy New Counterparty</h2>
+          <p className="text-sm text-gray-500 mt-1">Configure agent identity, permissions, and doctrine</p>
+        </div>
+
+        <div className="p-6 space-y-6">
+          {/* Basic Info */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Agent Name</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g., Alpha-Sentinel-001"
+                className="w-full bg-black border border-slate-700 rounded-lg px-3 py-2 text-white placeholder-gray-600 focus:border-cyan-500 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Staked Budget</label>
+              <input
+                type="number"
+                value={stakedBudget}
+                onChange={(e) => setStakedBudget(Number(e.target.value))}
+                className="w-full bg-black border border-slate-700 rounded-lg px-3 py-2 text-white focus:border-cyan-500 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Description</label>
+            <input
+              type="text"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Brief description of the agent's role"
+              className="w-full bg-black border border-slate-700 rounded-lg px-3 py-2 text-white placeholder-gray-600 focus:border-cyan-500 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Strategy Persona (System Prompt)</label>
+            <textarea
+              value={persona}
+              onChange={(e) => setPersona(e.target.value)}
+              placeholder="You are a strategic trader specialized in..."
+              rows={3}
+              className="w-full bg-black border border-slate-700 rounded-lg px-3 py-2 text-white placeholder-gray-600 focus:border-cyan-500 focus:outline-none resize-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">
+              <Plug className="w-3 h-3 inline mr-1" />
+              MCP Endpoint (Optional - bring your own agent)
+            </label>
+            <input
+              type="url"
+              value={mcpEndpoint}
+              onChange={(e) => setMcpEndpoint(e.target.value)}
+              placeholder="https://api.example.com/mcp/your-agent"
+              className="w-full bg-black border border-slate-700 rounded-lg px-3 py-2 text-white placeholder-gray-600 focus:border-purple-500 focus:outline-none font-mono text-sm"
+            />
+          </div>
+
+          {/* Topic Selection */}
+          <div>
+            <label className="block text-xs text-gray-500 mb-2">Market Topics</label>
+            <div className="flex flex-wrap gap-2">
+              {TOPIC_CLUSTERS.map(topic => (
+                <button
+                  key={topic.id}
+                  onClick={() => setSelectedTopics(prev => 
+                    prev.includes(topic.id) ? prev.filter(t => t !== topic.id) : [...prev, topic.id]
+                  )}
+                  className={clsx(
+                    'px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
+                    selectedTopics.includes(topic.id)
+                      ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                      : 'bg-slate-800 text-gray-400 border border-transparent hover:border-slate-600'
+                  )}
+                >
+                  {topic.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Data Source Permissions */}
+          <div>
+            <label className="block text-xs text-gray-500 mb-2">Data Source Permissions</label>
+            <div className="grid grid-cols-2 gap-2">
+              {DATA_SOURCES.map(source => (
+                <label
+                  key={source.id}
+                  className={clsx(
+                    'flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-all',
+                    permissions[source.id as keyof typeof permissions]
+                      ? 'bg-emerald-500/10 border border-emerald-500/30'
+                      : 'bg-black/30 border border-slate-700 hover:border-slate-600'
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    checked={permissions[source.id as keyof typeof permissions]}
+                    onChange={(e) => setPermissions(prev => ({ ...prev, [source.id]: e.target.checked }))}
+                    className="sr-only"
+                  />
+                  {permissions[source.id as keyof typeof permissions] ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  ) : (
+                    <div className="w-4 h-4 rounded-full border border-slate-600" />
+                  )}
+                  <span className={clsx(
+                    'text-xs',
+                    permissions[source.id as keyof typeof permissions] ? 'text-emerald-400' : 'text-gray-400'
+                  )}>
+                    {source.name}
+                  </span>
+                </label>
+              ))}
             </div>
           </div>
         </div>
 
-        <div className="flex gap-3 mt-6">
+        <div className="p-6 border-t border-slate-800 flex gap-3">
           <button
             onClick={onClose}
-            className="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+            className="flex-1 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={handleCreate}
             disabled={!name || isCreating}
-            className="flex-1 bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-medium py-2 px-4 rounded-lg transition-colors"
+            className="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-700 text-white font-semibold rounded-lg transition-colors disabled:cursor-not-allowed"
           >
-            {isCreating ? 'Creating...' : 'Create Agent'}
+            {isCreating ? 'Deploying...' : 'Deploy Agent'}
           </button>
         </div>
       </motion.div>
@@ -771,164 +729,234 @@ function CreateAgentModal({ onClose, onCreated }: { onClose: () => void; onCreat
   );
 }
 
-export default function Agents() {
-  const [agents, setAgents] = useState(mockAgents);
-  const [search, setSearch] = useState('');
-  const [showCreate, setShowCreate] = useState(false);
-  const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
+// ============================================================================
+// MAIN COMPONENT
+// ============================================================================
 
-  const handleDeleteAgent = (id: string) => {
+export default function Agents() {
+  const [agents, setAgents] = useState<AgentData[]>(mockAgents);
+  const [search, setSearch] = useState('');
+  const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Fetch agents from API
+  useEffect(() => {
+    const fetchAgents = async () => {
+      setIsLoading(true);
+      try {
+        const response = await apiClient.get<{ agents: any[] }>('/agents');
+        if (response?.agents?.length > 0) {
+          // Merge API data with mock structure
+          const apiAgents: AgentData[] = response.agents.map((a: any) => ({
+            id: a.id,
+            name: a.name,
+            description: a.strategy_persona || a.description || '',
+            avatar: a.avatar_url || '🤖',
+            strategyPersona: a.strategy_persona || '',
+            mcpEndpoint: a.mcp_endpoint || '',
+            truthScore: a.metrics?.truth_score || 0.5,
+            brierScore: a.metrics?.brier_score || 0.35,
+            reputationHash: `0x${a.id.slice(-8)}...`,
+            totalTrades: a.metrics?.total_trades || 0,
+            winningTrades: a.metrics?.winning_trades || 0,
+            totalPnl: a.metrics?.total_pnl || 0,
+            stakedBudget: a.staked_budget || 100000,
+            permissions: {
+              googleNews: true,
+              marineTraffic: false,
+              privateLiquidity: false,
+              noaaWeather: false,
+              githubActivity: false,
+              socialSentiment: true,
+            },
+            topics: a.trading_config?.allowed_topics || [],
+            maxPositionPct: a.trading_config?.max_position_pct || 15,
+            maxExposurePct: a.trading_config?.max_exposure_pct || 40,
+            status: a.status || 'active',
+            type: a.mcp_endpoint ? 'external' : 'system',
+          }));
+          setAgents(apiAgents);
+        }
+      } catch (e) {
+        console.log('Using mock agents');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchAgents();
+  }, []);
+
+  const handleToggleStatus = (id: string) => {
+    setAgents(prev => prev.map(a => 
+      a.id === id ? { ...a, status: a.status === 'active' ? 'paused' : 'active' } : a
+    ));
+  };
+
+  const handleDelete = (id: string) => {
+    if (!confirm('Remove this counterparty? This action cannot be undone.')) return;
     setAgents(prev => prev.filter(a => a.id !== id));
   };
 
-  const handleCreateAgent = (newAgent: any) => {
-    const agent = {
-      id: Date.now().toString(),
+  const handleCreate = (newAgent: Partial<AgentData>) => {
+    const agent: AgentData = {
+      id: `agent-${Date.now()}`,
       name: newAgent.name || 'New Agent',
       description: newAgent.description || '',
-      avatar_url: newAgent.avatar_url || '',
-      system_prompt: newAgent.system_prompt || '',
-      mcp_endpoint: newAgent.mcp_endpoint || '',
-      truth_score: 0.5,
-      total_trades: 0,
-      winning_trades: 0,
-      total_pnl: 0,
-      status: 'active',
-      strategy: 'custom',
-      balance: 10000,
+      avatar: '🤖',
+      strategyPersona: newAgent.strategyPersona || '',
+      mcpEndpoint: newAgent.mcpEndpoint || '',
+      truthScore: 0.5,
+      brierScore: 0.35,
+      reputationHash: `0x${Math.random().toString(16).slice(2, 10)}...`,
+      totalTrades: 0,
+      winningTrades: 0,
+      totalPnl: 0,
+      stakedBudget: newAgent.stakedBudget || 100000,
+      permissions: newAgent.permissions || {
+        googleNews: true,
+        marineTraffic: false,
+        privateLiquidity: false,
+        noaaWeather: false,
+        githubActivity: false,
+        socialSentiment: true,
+      },
       topics: newAgent.topics || [],
+      maxPositionPct: 15,
+      maxExposurePct: 40,
+      status: 'active',
+      type: newAgent.mcpEndpoint ? 'external' : 'custom',
     };
     setAgents(prev => [agent, ...prev]);
   };
 
   const filteredAgents = agents.filter(a => {
     const matchesSearch = a.name.toLowerCase().includes(search.toLowerCase());
-    const matchesTopic = !selectedTopic || a.topics?.includes(selectedTopic);
+    const matchesTopic = !selectedTopic || a.topics.includes(selectedTopic);
     return matchesSearch && matchesTopic;
   });
 
-  // Sort by truth score descending
-  const sortedAgents = [...filteredAgents].sort((a, b) => b.truth_score - a.truth_score);
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-gray-500">Loading counterparties...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="p-8">
+    <div className="min-h-screen bg-black">
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-white">Agents</h1>
-          <p className="text-slate-400 mt-1">Manage AI trading agents and their reputations</p>
-        </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 bg-cyan-600 hover:bg-cyan-500 text-white font-medium py-2 px-4 rounded-lg transition-colors"
-        >
-          <Plus className="w-5 h-5" />
-          Create Agent
-        </button>
-      </div>
-
-      {/* Leaderboard */}
-      <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 mb-8">
-        <h2 className="flex items-center gap-2 text-lg font-semibold text-white mb-4">
-          <Award className="w-5 h-5 text-yellow-400" />
-          Truth Score Leaderboard
-        </h2>
-        <div className="space-y-3">
-          {sortedAgents.slice(0, 5).map((agent, index) => (
-            <div
-              key={agent.id}
-              className="flex items-center gap-4 p-3 bg-slate-700/30 rounded-lg"
-            >
-              <span className={clsx(
-                'w-8 h-8 rounded-full flex items-center justify-center font-bold',
-                index === 0 ? 'bg-yellow-500 text-black' :
-                index === 1 ? 'bg-slate-400 text-black' :
-                index === 2 ? 'bg-orange-600 text-white' :
-                'bg-slate-600 text-slate-300'
-              )}>
-                {index + 1}
-              </span>
-              <div className="flex-1">
-                <p className="font-medium text-white">{agent.name}</p>
-                <p className="text-sm text-slate-400">{agent.total_trades} trades</p>
-              </div>
-              <TruthScoreBadge score={agent.truth_score} />
+      <div className="border-b border-slate-800 bg-gradient-to-r from-[#0a0a0a] via-black to-[#0a0a0a]">
+        <div className="max-w-7xl mx-auto px-6 py-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-white">Counterparties</h1>
+              <p className="text-gray-500 text-sm mt-1">KYA (Know Your Agent) Registry & Governance</p>
             </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Topic Filter */}
-      <div className="mb-6">
-        <div className="flex items-center gap-2 mb-2">
-          <Filter className="w-4 h-4 text-slate-400" />
-          <span className="text-sm text-slate-400">Filter by Topic</span>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => setSelectedTopic(null)}
-            className={clsx(
-              'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
-              selectedTopic === null 
-                ? 'bg-cyan-600 text-white' 
-                : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-            )}
-          >
-            All Topics
-          </button>
-          {TOPIC_CLUSTERS.map(topic => (
             <button
-              key={topic.id}
-              onClick={() => setSelectedTopic(topic.id)}
-              className={clsx(
-                'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
-                selectedTopic === topic.id
-                  ? topic.color === 'blue' ? 'bg-blue-600 text-white' :
-                    topic.color === 'purple' ? 'bg-purple-600 text-white' :
-                    topic.color === 'green' ? 'bg-green-600 text-white' :
-                    topic.color === 'orange' ? 'bg-orange-600 text-white' :
-                    'bg-cyan-600 text-white'
-                  : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-              )}
+              onClick={() => setShowCreate(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-semibold rounded-lg transition-colors"
             >
-              {topic.label}
+              <Plus className="w-4 h-4" />
+              Deploy Agent
             </button>
-          ))}
+          </div>
+
+          {/* Search & Filters */}
+          <div className="mt-6 flex items-center gap-4">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search counterparties..."
+                className="w-full bg-black border border-slate-700 rounded-lg pl-10 pr-4 py-2 text-white placeholder-gray-600 focus:border-cyan-500 focus:outline-none"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Filter className="w-4 h-4 text-gray-500" />
+              <button
+                onClick={() => setSelectedTopic(null)}
+                className={clsx(
+                  'px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
+                  !selectedTopic ? 'bg-cyan-500/20 text-cyan-400' : 'text-gray-500 hover:text-gray-300'
+                )}
+              >
+                All
+              </button>
+              {TOPIC_CLUSTERS.map(topic => (
+                <button
+                  key={topic.id}
+                  onClick={() => setSelectedTopic(topic.id)}
+                  className={clsx(
+                    'px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
+                    selectedTopic === topic.id ? 'bg-cyan-500/20 text-cyan-400' : 'text-gray-500 hover:text-gray-300'
+                  )}
+                >
+                  {topic.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-md mb-6">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-        <input
-          type="text"
-          placeholder="Search agents..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full bg-slate-800 border border-slate-700 rounded-lg py-2 pl-10 pr-4 text-white placeholder-slate-400 focus:outline-none focus:border-cyan-500"
-        />
+      {/* Stats Summary */}
+      <div className="max-w-7xl mx-auto px-6 py-4 border-b border-slate-800/50">
+        <div className="flex items-center gap-8 text-sm">
+          <span className="text-gray-500">
+            Total: <strong className="text-white">{agents.length}</strong>
+          </span>
+          <span className="text-gray-500">
+            Active: <strong className="text-emerald-400">{agents.filter(a => a.status === 'active').length}</strong>
+          </span>
+          <span className="text-gray-500">
+            Paused: <strong className="text-amber-400">{agents.filter(a => a.status === 'paused').length}</strong>
+          </span>
+          <span className="text-gray-500">
+            External: <strong className="text-purple-400">{agents.filter(a => a.type === 'external').length}</strong>
+          </span>
+          <span className="text-gray-500 ml-auto">
+            Total Staked: <strong className="text-white">${(agents.reduce((a, b) => a + b.stakedBudget, 0) / 1000000).toFixed(2)}M</strong>
+          </span>
+        </div>
       </div>
 
-      {/* Agents Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <AnimatePresence>
-          {sortedAgents.map((agent) => (
-            <AgentCard 
-              key={agent.id} 
-              agent={agent} 
-              onDelete={handleDeleteAgent}
-            />
-          ))}
-        </AnimatePresence>
+      {/* Agent Grid */}
+      <div className="max-w-7xl mx-auto px-6 py-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <AnimatePresence mode="popLayout">
+            {filteredAgents.map(agent => (
+              <AgentCard
+                key={agent.id}
+                agent={agent}
+                onToggleStatus={handleToggleStatus}
+                onDelete={handleDelete}
+              />
+            ))}
+          </AnimatePresence>
+        </div>
+
+        {filteredAgents.length === 0 && (
+          <div className="text-center py-12">
+            <Bot className="w-12 h-12 text-gray-700 mx-auto mb-3" />
+            <p className="text-gray-500">No counterparties found</p>
+          </div>
+        )}
       </div>
 
       {/* Create Modal */}
-      {showCreate && (
-        <CreateAgentModal 
-          onClose={() => setShowCreate(false)} 
-          onCreated={handleCreateAgent}
-        />
-      )}
+      <CreateAgentModal
+        isOpen={showCreate}
+        onClose={() => setShowCreate(false)}
+        onCreate={handleCreate}
+      />
     </div>
   );
 }

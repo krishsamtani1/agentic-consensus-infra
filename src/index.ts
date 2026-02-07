@@ -36,6 +36,8 @@ import { getReputationLedger } from './reputation/ReputationLedger.js';
 import { getDoctrineEngine } from './core/DoctrineEngine.js';
 import { getAgentManager } from './core/AgentManager.js';
 import { createGovernanceRoutes } from './api/routes/governance.js';
+import { createPaymentRoutes } from './api/routes/payments.js';
+import { createAuthRoutes } from './api/routes/auth.js';
 
 import { EscrowLedger } from './engine/escrow/EscrowLedger.js';
 import { MatchingEngine } from './engine/matcher/MatchingEngine.js';
@@ -110,10 +112,12 @@ const fastify = Fastify({
 
 async function registerPlugins() {
   // CORS - Allow cross-origin requests
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
   await fastify.register(cors, {
-    origin: true,
+    origin: [frontendUrl, 'http://localhost:5173', 'http://localhost:5174'],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Agent-ID'],
+    credentials: true,
   });
 
   // Rate Limiting
@@ -181,6 +185,12 @@ async function registerRoutes() {
 
     // Governance & Agent Management
     await app.register(createGovernanceRoutes(eventBus));
+
+    // Stripe Payments
+    await app.register(createPaymentRoutes(escrow, eventBus));
+
+    // Authentication
+    await app.register(createAuthRoutes(escrow, eventBus));
     
     // Initialize Doctrine Engine and Agent Manager
     const doctrineEngine = getDoctrineEngine(eventBus);
