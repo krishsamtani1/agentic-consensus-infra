@@ -597,7 +597,7 @@ export default function Markets() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-white">Clearinghouse</h1>
+          <h1 className="text-2xl font-bold text-white">Markets</h1>
           <p className="text-gray-500 text-sm mt-1">Trade outcome tokens on real-world events</p>
         </div>
         <div className="flex items-center gap-3">

@@ -239,7 +239,7 @@ const MARKET_TEMPLATES: MarketTemplate[] = [
     volatility: 'medium',
   },
 
-  // Sports & Entertainment (bonus chaos)
+  // Sports & Entertainment
   {
     category: 'entertainment',
     ticker_prefix: 'ENT',
@@ -259,6 +259,112 @@ const MARKET_TEMPLATES: MarketTemplate[] = [
     tags: ['#Entertainment', '#Streaming', '#Merger'],
     initial_yes_odds: 0.18,
     volatility: 'low',
+  },
+
+  // Sports
+  {
+    category: 'sports',
+    ticker_prefix: 'SPORT',
+    title: 'FIFA Club World Cup 2025 Attendance Record',
+    description: 'FIFA Club World Cup sets new attendance record for the tournament.',
+    bet_question: 'Will FIFA CWC set attendance record?',
+    tags: ['#Sports', '#FIFA', '#Soccer'],
+    initial_yes_odds: 0.55,
+    volatility: 'low',
+  },
+  {
+    category: 'sports',
+    ticker_prefix: 'SPORT',
+    title: 'NBA 2026 Finals Goes to Game 7',
+    description: 'The 2026 NBA Finals goes to a deciding Game 7.',
+    bet_question: 'Will NBA Finals go to Game 7?',
+    tags: ['#Sports', '#NBA', '#Basketball'],
+    initial_yes_odds: 0.30,
+    volatility: 'medium',
+  },
+  {
+    category: 'sports',
+    ticker_prefix: 'SPORT',
+    title: 'F1 Team Change Wins Constructor Championship',
+    description: 'A team that changed constructors wins the 2026 F1 championship.',
+    bet_question: 'Will a constructor-change team win F1?',
+    tags: ['#Sports', '#F1', '#Racing'],
+    initial_yes_odds: 0.35,
+    volatility: 'medium',
+  },
+
+  // Economics
+  {
+    category: 'economics',
+    ticker_prefix: 'ECON',
+    title: 'Fed Cuts Rates Below 3% by Q3 2026',
+    description: 'Federal Reserve cuts federal funds rate below 3% before October 2026.',
+    bet_question: 'Will Fed rate fall below 3% by Q3?',
+    tags: ['#Economics', '#Fed', '#Rates'],
+    initial_yes_odds: 0.40,
+    volatility: 'medium',
+  },
+  {
+    category: 'economics',
+    ticker_prefix: 'ECON',
+    title: 'US Recession Officially Declared in 2026',
+    description: 'NBER officially declares a US recession beginning in 2026.',
+    bet_question: 'Will US enter recession in 2026?',
+    tags: ['#Economics', '#Recession', '#GDP'],
+    initial_yes_odds: 0.25,
+    volatility: 'high',
+  },
+  {
+    category: 'economics',
+    ticker_prefix: 'ECON',
+    title: 'S&P 500 Closes Above 7000',
+    description: 'S&P 500 index closes above 7,000 at any point in 2026.',
+    bet_question: 'Will S&P 500 break 7000?',
+    tags: ['#Economics', '#SP500', '#Markets'],
+    initial_yes_odds: 0.48,
+    volatility: 'medium',
+  },
+  {
+    category: 'economics',
+    ticker_prefix: 'ECON',
+    title: 'Oil Price Drops Below $50/barrel',
+    description: 'WTI crude oil falls below $50 per barrel at any point in 2026.',
+    bet_question: 'Will oil drop below $50?',
+    tags: ['#Economics', '#Oil', '#Commodities'],
+    initial_yes_odds: 0.20,
+    volatility: 'medium',
+  },
+
+  // Health & Science
+  {
+    category: 'health',
+    ticker_prefix: 'HLTH',
+    title: 'WHO Declares New Health Emergency',
+    description: 'WHO declares a Public Health Emergency of International Concern in 2026.',
+    bet_question: 'Will WHO declare a PHEIC in 2026?',
+    tags: ['#Health', '#WHO', '#Pandemic'],
+    initial_yes_odds: 0.22,
+    volatility: 'high',
+  },
+  {
+    category: 'health',
+    ticker_prefix: 'HLTH',
+    title: 'FDA Approves GLP-1 for New Indication',
+    description: 'FDA approves a GLP-1 drug (Ozempic-class) for a new non-diabetes indication.',
+    bet_question: 'Will GLP-1 get new FDA approval?',
+    tags: ['#Health', '#FDA', '#Pharma'],
+    initial_yes_odds: 0.65,
+    volatility: 'low',
+  },
+  {
+    category: 'science',
+    ticker_prefix: 'SCI',
+    title: 'SpaceX Starship Reaches Orbit',
+    description: 'SpaceX Starship successfully completes full orbital flight and controlled reentry.',
+    bet_question: 'Will Starship complete orbital flight?',
+    tags: ['#Science', '#SpaceX', '#Space'],
+    initial_yes_odds: 0.72,
+    volatility: 'medium',
   },
 ];
 

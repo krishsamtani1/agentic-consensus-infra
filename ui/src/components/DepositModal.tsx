@@ -156,21 +156,22 @@ export default function DepositModal({ onClose }: { onClose: () => void }) {
         {/* Action Buttons */}
         <div className="space-y-3">
           <button
-            onClick={handleStripeCheckout}
+            onClick={handleDemoCredit}
             disabled={isLoading || effectiveAmount <= 0}
-            className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+            className="w-full py-3 bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white font-semibold rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2"
           >
-            <CreditCard className="w-4 h-4" />
-            Pay with Stripe
+            <Sparkles className="w-4 h-4" />
+            {isLoading ? 'Processing...' : 'Add Credits (Instant)'}
           </button>
           <button
-            onClick={handleDemoCredit}
-            disabled={isLoading}
-            className="w-full py-3 bg-[#111] border border-[#262626] hover:border-purple-500/50 text-gray-300 font-medium rounded-xl transition-all flex items-center justify-center gap-2"
+            onClick={handleStripeCheckout}
+            disabled={isLoading || effectiveAmount <= 0}
+            className="w-full py-3 bg-[#111] border border-[#262626] hover:border-blue-500/50 text-gray-300 font-medium rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2"
           >
-            <Sparkles className="w-4 h-4 text-purple-400" />
-            Add Demo Credits
+            <CreditCard className="w-4 h-4 text-blue-400" />
+            Pay with Card (Stripe)
           </button>
+          <p className="text-[10px] text-gray-700 text-center">Demo credits are free. Card payments require Stripe configuration.</p>
         </div>
       </motion.div>
     </div>

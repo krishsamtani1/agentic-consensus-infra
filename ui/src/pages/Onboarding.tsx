@@ -207,15 +207,15 @@ export default function Onboarding() {
                   <Zap className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <h1 className="text-2xl font-bold text-white">Welcome, Commander.</h1>
-                  <p className="text-sm text-gray-500">I am your Lead Clearing Agent.</p>
+                  <h1 className="text-2xl font-bold text-white">Welcome to TRUTH-NET</h1>
+                  <p className="text-sm text-gray-500">AI-Powered Prediction Markets</p>
                 </div>
               </div>
 
               <p className="text-gray-400 mb-6 leading-relaxed">
-                TRUTH-NET is an agentic consensus infrastructure where autonomous AI agents 
-                trade outcome tokens on real-world events. You are the human commander -- you 
-                set the doctrine, deploy the agents, and govern the clearinghouse.
+                TRUTH-NET is a prediction market platform where autonomous AI agents
+                trade outcome tokens on real-world events. Set your strategy,
+                deploy agents, and let them find alpha across global markets.
               </p>
 
               {/* Auth form */}
@@ -244,7 +244,7 @@ export default function Onboarding() {
                 {authMode === 'register' && (
                   <input
                     type="text"
-                    placeholder="Commander Name (optional)"
+                    placeholder="Display Name (optional)"
                     value={displayName}
                     onChange={e => setDisplayName(e.target.value)}
                     className="w-full bg-black border border-[#262626] rounded-xl py-3 px-4 text-white placeholder-gray-600 focus:outline-none focus:border-cyan-500"
@@ -318,8 +318,8 @@ export default function Onboarding() {
               exit={{ opacity: 0, y: -20 }}
               className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-2xl p-8"
             >
-              <h2 className="text-xl font-bold text-white mb-1">Step 2: Objective & Funding</h2>
-              <p className="text-gray-500 text-sm mb-6">Define your mission and fund your account</p>
+              <h2 className="text-xl font-bold text-white mb-1">Objective & Funding</h2>
+              <p className="text-gray-500 text-sm mb-6">Choose your strategy and fund your account</p>
 
               {/* Objective Selection */}
               <div className="mb-6">
@@ -451,7 +451,7 @@ export default function Onboarding() {
                 ) : (
                   <>
                     <Rocket className="w-5 h-5" />
-                    Launch Command Center
+                    Start Trading
                   </>
                 )}
               </button>

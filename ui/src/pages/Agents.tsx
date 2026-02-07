@@ -794,7 +794,7 @@ export default function Agents() {
   };
 
   const handleDelete = (id: string) => {
-    if (!confirm('Remove this counterparty? This action cannot be undone.')) return;
+    if (!confirm('Remove this agent? This action cannot be undone.')) return;
     setAgents(prev => prev.filter(a => a.id !== id));
   };
 
@@ -842,7 +842,7 @@ export default function Agents() {
       <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-500">Loading counterparties...</p>
+          <p className="text-gray-500">Loading agents...</p>
         </div>
       </div>
     );
@@ -855,8 +855,8 @@ export default function Agents() {
         <div className="max-w-7xl mx-auto px-6 py-6">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-white">Counterparties</h1>
-              <p className="text-gray-500 text-sm mt-1">KYA (Know Your Agent) Registry & Governance</p>
+              <h1 className="text-2xl font-bold text-white">Agents</h1>
+              <p className="text-gray-500 text-sm mt-1">AI Agent Registry & Performance</p>
             </div>
             <button
               onClick={() => setShowCreate(true)}
@@ -875,7 +875,7 @@ export default function Agents() {
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search counterparties..."
+                placeholder="Search agents..."
                 className="w-full bg-black border border-slate-700 rounded-lg pl-10 pr-4 py-2 text-white placeholder-gray-600 focus:border-cyan-500 focus:outline-none"
               />
             </div>
