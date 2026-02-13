@@ -256,12 +256,11 @@ function generateMarketFromHeadline(headline: any): Market | null {
 }
 
 /**
- * Generate a SPECIFIC, BINARY question directly from the headline content.
- * Every question must reference the actual subject matter of the headline.
- * No generic templates - the question should make sense as a standalone market.
+ * Generate a SPECIFIC, BINARY market question from a headline.
+ * Uses varied question formats - NOT just "Will...?" for everything.
+ * Questions should be clear, time-bounded, and resolvable.
  */
 function generateQuestion(title: string, category: string): string | null {
-  // Clean up the title - remove HTML entities, trim
   const clean = title
     .replace(/&#\d+;/g, '')
     .replace(/&amp;/g, '&')
@@ -271,7 +270,7 @@ function generateQuestion(title: string, category: string): string | null {
     .replace(/\s+/g, ' ')
     .trim();
 
-  // Skip garbage headlines - aggressive filtering for quality
+  // Quality filter
   if (clean.length < 20 || clean.length > 200) return null;
   if (/^(show hn|ask hn|tell hn|daily|weekly|thread|update|moons? update|spc -)/i.test(clean)) return null;
   if (/best .+ (2024|2025|2026)|review|tested|our .+ would/i.test(clean)) return null;
@@ -283,129 +282,259 @@ function generateQuestion(title: string, category: string): string | null {
   if (/\b(giveaway|sweepstake|contest)\b/i.test(clean)) return null;
   if (/^opinion:|^editorial:|^letter:/i.test(clean)) return null;
   if (/would feel less gimmicky|scatterbrain/i.test(clean)) return null;
+  if (/\/r\/\w+\s+live thread/i.test(clean)) return null;
+  if (/my elderly|my sister|my mother|my father/i.test(clean)) return null;
 
-  // Extract key entities from headline
   const subject = extractSubject(clean);
   if (!subject) return null;
-
   const lower = clean.toLowerCase();
 
-  // =========================================================================
-  // Generate question based on the actual content
-  // =========================================================================
+  // Use a random selector to vary format even within the same category
+  const r = Math.random();
 
-  // Person/entity doing something
+  // ── Announcements / Plans ──
   if (lower.includes('announces') || lower.includes('announced')) {
-    return `Will ${subject} follow through on this announcement within 30 days?`;
+    const opts = [
+      `${subject}: Follow-through within 30 days?`,
+      `Announcement by ${subject} — implemented by end of quarter?`,
+      `Does ${subject} deliver on this within 30 days?`,
+    ];
+    return opts[Math.floor(r * opts.length)];
   }
-  if (lower.includes('plans') || lower.includes('planning') || lower.includes('preparing') || lower.includes('preps')) {
-    return `Will ${subject} execute on these plans within 60 days?`;
+  if (lower.includes('plans') || lower.includes('planning') || lower.includes('preparing')) {
+    const opts = [
+      `${subject} — executed within 60 days?`,
+      `Plans confirmed: ${subject} delivers by Q2 2026?`,
+      `${subject}: Blueprint becomes reality within 2 months?`,
+    ];
+    return opts[Math.floor(r * opts.length)];
   }
-  if (lower.includes('threatens') || lower.includes('threat')) {
-    return `Will ${subject} act on this threat within 30 days?`;
-  }
+
+  // ── Launches / Releases ──
   if (lower.includes('launches') || lower.includes('launch') || lower.includes('releases') || lower.includes('drops')) {
-    return `Will the ${subject} launch be commercially successful (positive reception)?`;
+    const opts = [
+      `${subject}: Positive market reception?`,
+      `Launch alert — ${subject} gains traction within 30 days?`,
+      `${subject}: Commercial success or flop?`,
+    ];
+    return opts[Math.floor(r * opts.length)];
+  }
+
+  // ── Legal / Regulatory ──
+  if (lower.includes('files') || lower.includes('lawsuit') || lower.includes('sues') || lower.includes('legal')) {
+    const opts = [
+      `${subject}: Legal victory within 6 months?`,
+      `Courtroom clash — ${subject} prevails?`,
+      `Legal challenge: ${subject} wins the case?`,
+    ];
+    return opts[Math.floor(r * opts.length)];
+  }
+
+  // ── M&A / Funding ──
+  if (lower.includes('acquires') || lower.includes('acquisition') || lower.includes('merger') || lower.includes('buys')) {
+    const opts = [
+      `${subject}: Deal closes by Q2 2026?`,
+      `Acquisition target — ${subject} finalized?`,
+      `M&A: ${subject} completed without regulatory block?`,
+    ];
+    return opts[Math.floor(r * opts.length)];
   }
   if (lower.includes('raises') || lower.includes('funding') || lower.includes('investment')) {
-    return `Will ${subject} close this funding round within 60 days?`;
-  }
-  if (lower.includes('acquires') || lower.includes('acquisition') || lower.includes('merger') || lower.includes('buys')) {
-    return `Will the ${subject} acquisition/deal close by Q2 2026?`;
-  }
-  if (lower.includes('files') || lower.includes('lawsuit') || lower.includes('sues') || lower.includes('legal')) {
-    return `Will ${subject} win this legal challenge?`;
+    const opts = [
+      `${subject}: Funding round closes within 60 days?`,
+      `Capital raise — ${subject} hits target?`,
+      `Investment: ${subject} secures the round?`,
+    ];
+    return opts[Math.floor(r * opts.length)];
   }
 
-  // Conflict / geopolitics
+  // ── Conflict / Geopolitics ──
   if (lower.includes('war') || lower.includes('invasion') || lower.includes('strikes') || lower.includes('attack')) {
-    return `Will the ${subject} conflict escalate further within 14 days?`;
+    const opts = [
+      `Escalation: ${subject} intensifies within 14 days?`,
+      `${subject} — further military action within 2 weeks?`,
+      `Conflict zone: ${subject} escalates before month-end?`,
+    ];
+    return opts[Math.floor(r * opts.length)];
   }
   if (lower.includes('ceasefire') || lower.includes('peace') || lower.includes('truce') || lower.includes('negotiate')) {
-    return `Will ${subject} peace negotiations produce an agreement within 30 days?`;
+    const opts = [
+      `Peace deal: ${subject} agreement within 30 days?`,
+      `${subject} — ceasefire holds for 14+ days?`,
+      `Diplomacy: ${subject} produces lasting agreement?`,
+    ];
+    return opts[Math.floor(r * opts.length)];
   }
   if (lower.includes('sanction') || lower.includes('embargo') || lower.includes('ban')) {
-    return `Will ${subject} sanctions be implemented within 30 days?`;
+    const opts = [
+      `Sanctions: ${subject} enforced within 30 days?`,
+      `${subject} — ban implemented as announced?`,
+      `Regulatory: ${subject} takes effect?`,
+    ];
+    return opts[Math.floor(r * opts.length)];
   }
   if (lower.includes('election') || lower.includes('vote') || lower.includes('poll')) {
-    return `Will the leading candidate in ${subject} win the election?`;
+    const opts = [
+      `${subject}: Frontrunner wins?`,
+      `Election outcome — ${subject} favors incumbent?`,
+      `Vote result: ${subject} goes as predicted by polls?`,
+    ];
+    return opts[Math.floor(r * opts.length)];
   }
   if (lower.includes('tariff') || lower.includes('trade war') || lower.includes('duties')) {
-    return `Will ${subject} tariffs take effect as announced?`;
+    const opts = [
+      `Trade: ${subject} tariffs take effect as stated?`,
+      `${subject} — duties implemented without rollback?`,
+      `Tariff alert: ${subject} enacted by deadline?`,
+    ];
+    return opts[Math.floor(r * opts.length)];
+  }
+  if (lower.includes('threatens') || lower.includes('threat') || lower.includes('warns')) {
+    const opts = [
+      `${subject}: Threat becomes action within 30 days?`,
+      `Warning: ${subject} follows through?`,
+      `${subject} — escalation from rhetoric to action?`,
+    ];
+    return opts[Math.floor(r * opts.length)];
   }
 
-  // Tech / AI specific
-  if (lower.includes('gpt') || lower.includes('openai') || lower.includes('claude') || lower.includes('anthropic') || lower.includes('gemini')) {
-    return `Will ${subject} ship to general availability within 60 days?`;
+  // ── Tech / AI ──
+  if (lower.includes('gpt') || lower.includes('openai') || lower.includes('claude') || lower.includes('anthropic') || lower.includes('gemini') || lower.includes(' ai ')) {
+    const opts = [
+      `${subject}: Ships to GA within 60 days?`,
+      `AI: ${subject} reaches general availability?`,
+      `Tech milestone — ${subject} delivered on schedule?`,
+    ];
+    return opts[Math.floor(r * opts.length)];
   }
-  if (lower.includes('hack') || lower.includes('breach') || lower.includes('vulnerability') || lower.includes('malicious')) {
-    return `Will ${subject} affect more than 100,000 users?`;
+  if (lower.includes('hack') || lower.includes('breach') || lower.includes('vulnerability')) {
+    const opts = [
+      `Breach: ${subject} affects >100K users?`,
+      `${subject} — damages exceed $10M?`,
+      `Security: ${subject} triggers regulatory response?`,
+    ];
+    return opts[Math.floor(r * opts.length)];
   }
   if (lower.includes('ipo') || lower.includes('goes public') || lower.includes('listing')) {
-    return `Will ${subject} IPO price above initial range?`;
+    const opts = [
+      `IPO: ${subject} prices above range?`,
+      `${subject}: First-day pop exceeds 20%?`,
+      `Public debut — ${subject} valued above $10B?`,
+    ];
+    return opts[Math.floor(r * opts.length)];
   }
 
-  // Crypto
+  // ── Crypto ──
   if (lower.includes('bitcoin') || lower.includes('btc')) {
-    return `Will Bitcoin move >5% within 48 hours of ${subject}?`;
+    const opts = [
+      `BTC: >5% price move within 48h of ${subject}?`,
+      `Bitcoin reacts — ${subject} moves price >5%?`,
+      `${subject}: BTC breaks key support/resistance?`,
+    ];
+    return opts[Math.floor(r * opts.length)];
   }
-  if (lower.includes('ethereum') || lower.includes('eth') || lower.includes('crypto') || lower.includes('defi')) {
-    return `Will ${subject} cause crypto market cap to shift >3%?`;
-  }
-  if (lower.includes('liquidat') || lower.includes('whale')) {
-    return `Will ${subject} trigger further cascading liquidations?`;
+  if (lower.includes('ethereum') || lower.includes('crypto') || lower.includes('defi')) {
+    const opts = [
+      `Crypto: ${subject} shifts market cap >3%?`,
+      `${subject} — net crypto market impact >$50B?`,
+      `DeFi: ${subject} causes >5% TVL change?`,
+    ];
+    return opts[Math.floor(r * opts.length)];
   }
 
-  // Weather / climate
+  // ── Weather / Climate ──
   if (lower.includes('hurricane') || lower.includes('tropical') || lower.includes('storm')) {
-    return `Will ${subject} reach Category 3+ intensity?`;
+    const opts = [
+      `Storm: ${subject} reaches Cat 3+ intensity?`,
+      `${subject}: >$1B in insured damages?`,
+      `Hurricane: ${subject} makes landfall as major storm?`,
+    ];
+    return opts[Math.floor(r * opts.length)];
   }
-  if (lower.includes('earthquake') || lower.includes('tsunami')) {
-    return `Will ${subject} cause >$1B in damage?`;
-  }
-  if (lower.includes('wildfire') || lower.includes('fire') || lower.includes('drought')) {
-    return `Will ${subject} force evacuation of >10,000 people?`;
+  if (lower.includes('earthquake') || lower.includes('tsunami') || lower.includes('wildfire') || lower.includes('drought')) {
+    const opts = [
+      `Disaster: ${subject} causes >$1B damage?`,
+      `${subject}: State of emergency declared?`,
+      `Natural event — ${subject} triggers federal response?`,
+    ];
+    return opts[Math.floor(r * opts.length)];
   }
 
-  // Shipping / logistics
+  // ── Logistics / Supply Chain ──
   if (lower.includes('port') || lower.includes('canal') || lower.includes('shipping') || lower.includes('freight')) {
-    return `Will ${subject} cause shipping delays exceeding 72 hours?`;
+    const opts = [
+      `Shipping: ${subject} causes >72h delays?`,
+      `${subject}: Supply chain disruption measurable within 7 days?`,
+      `Logistics: ${subject} impacts freight rates >10%?`,
+    ];
+    return opts[Math.floor(r * opts.length)];
   }
   if (lower.includes('supply chain') || lower.includes('shortage') || lower.includes('disruption')) {
-    return `Will ${subject} impact consumer prices within 30 days?`;
+    const opts = [
+      `Disruption: ${subject} hits consumer prices within 30 days?`,
+      `${subject}: Cascading supply chain impact?`,
+      `Supply alert — ${subject} causes visible shortage?`,
+    ];
+    return opts[Math.floor(r * opts.length)];
   }
 
-  // Sports / entertainment
+  // ── Sports ──
   if (lower.includes('championship') || lower.includes('finals') || lower.includes('super bowl') || lower.includes('world cup')) {
-    return `Will the favored team/player win ${subject}?`;
-  }
-  if (lower.includes('record') || lower.includes('milestone') || lower.includes('historic')) {
-    return `Will ${subject} set a new record?`;
-  }
-
-  // Economy / markets
-  if (lower.includes('fed') || lower.includes('rate') || lower.includes('inflation') || lower.includes('gdp')) {
-    return `Will ${subject} cause S&P 500 to move >1% in a session?`;
-  }
-  if (lower.includes('layoff') || lower.includes('job cuts') || lower.includes('downsizing')) {
-    return `Will ${subject} layoffs exceed initial reports?`;
-  }
-  if (lower.includes('profit') || lower.includes('revenue') || lower.includes('earnings')) {
-    return `Will ${subject} beat analyst expectations?`;
+    const opts = [
+      `${subject}: Favorite wins?`,
+      `Championship — ${subject} goes to the top seed?`,
+    ];
+    return opts[Math.floor(r * opts.length)];
   }
 
-  // Generic but still specific to the headline
+  // ── Economy / Earnings ──
+  if (lower.includes('fed') || lower.includes('rate cut') || lower.includes('inflation') || lower.includes('gdp')) {
+    const opts = [
+      `Markets: ${subject} moves S&P 500 >1%?`,
+      `${subject}: Rate decision matches consensus?`,
+      `Macro: ${subject} shifts bond yields >10bps?`,
+    ];
+    return opts[Math.floor(r * opts.length)];
+  }
+  if (lower.includes('layoff') || lower.includes('job cuts') || lower.includes('downsizing') || lower.includes('shutter')) {
+    const opts = [
+      `${subject}: Layoffs exceed initial reports?`,
+      `Job cuts — ${subject} >1,000 roles affected?`,
+      `Restructuring: ${subject} completed within 90 days?`,
+    ];
+    return opts[Math.floor(r * opts.length)];
+  }
+  if (lower.includes('earnings') || lower.includes('revenue') || lower.includes('profit') || lower.includes('stock')) {
+    const opts = [
+      `${subject}: Beats analyst estimates?`,
+      `Earnings: ${subject} surprises to the upside?`,
+      `${subject} — stock moves >5% post-report?`,
+    ];
+    return opts[Math.floor(r * opts.length)];
+  }
+  if (lower.includes('record') || lower.includes('milestone') || lower.includes('historic') || lower.includes('first')) {
+    const opts = [
+      `${subject}: Record confirmed within 7 days?`,
+      `Historic: ${subject} stands after verification?`,
+      `Milestone — ${subject} holds up?`,
+    ];
+    return opts[Math.floor(r * opts.length)];
+  }
+
+  // ── Fallback: varied formats ──
   if (subject.length > 10 && subject.length < 80) {
     const templates = [
-      `Will "${subject}" resolve positively within 30 days?`,
-      `Will ${subject} lead to major policy changes?`,
-      `Will ${subject} still be in the news cycle in 7 days?`,
-      `Will ${subject} have measurable economic impact (>0.1% GDP)?`,
+      `${subject}: Resolved positively within 30 days?`,
+      `${subject} — measurable impact within 2 weeks?`,
+      `Developing: ${subject} still in headlines in 7 days?`,
+      `${subject}: Policy change follows within 60 days?`,
+      `Impact: ${subject} moves markets >0.5%?`,
+      `${subject} — confirmed by independent sources within 48h?`,
     ];
-    return templates[Math.floor(Math.random() * templates.length)];
+    return templates[Math.floor(r * templates.length)];
   }
 
-  return null; // Skip headlines we can't make a good question from
+  return null;
 }
 
 /**

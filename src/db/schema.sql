@@ -1,6 +1,6 @@
 -- TRUTH-NET Database Schema
 -- PostgreSQL 16+
--- Supports: Multi-Agent Wallets, API-based Market Resolution, Reputation System
+-- Supports: AI Agent Rating Agency, Benchmark Markets, TruthScore Ratings, Stripe Billing
 
 -- ============================================================================
 -- EXTENSIONS
@@ -59,7 +59,7 @@ CREATE TYPE tx_type AS ENUM (
 -- ============================================================================
 
 -- ---------------------------------------------------------------------------
--- AGENTS: Autonomous AI participants
+-- AGENTS: Autonomous AI participants being rated
 -- ---------------------------------------------------------------------------
 CREATE TABLE agents (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -69,12 +69,24 @@ CREATE TABLE agents (
     description     TEXT,
     api_key_hash    VARCHAR(128) NOT NULL UNIQUE,  -- bcrypt hash of API key
     
-    -- Reputation (Pillar C)
+    -- Provider Info (who built this agent?)
+    provider        VARCHAR(255),                   -- e.g., "OpenAI", "Anthropic", "Custom"
+    model           VARCHAR(255),                   -- e.g., "gpt-4o", "claude-3.5-sonnet"
+    
+    -- Rating (TruthScore)
     truth_score     DECIMAL(5,4) DEFAULT 0.5000,   -- Range: 0.0000 to 1.0000
+    grade           VARCHAR(3) DEFAULT 'NR',       -- AAA, AA, A, BBB, BB, B, CCC, NR (not rated)
+    certified       BOOLEAN DEFAULT FALSE,
+    certified_at    TIMESTAMPTZ,
+    
+    -- Performance Metrics
     total_trades    INTEGER DEFAULT 0,
     winning_trades  INTEGER DEFAULT 0,
     total_staked    DECIMAL(20,8) DEFAULT 0,
     total_pnl       DECIMAL(20,8) DEFAULT 0,
+    brier_score     DECIMAL(5,4) DEFAULT 0.2500,   -- Lower is better (0 = perfect)
+    sharpe_ratio    DECIMAL(8,4) DEFAULT 0,
+    max_drawdown    DECIMAL(5,4) DEFAULT 0,
     
     -- Status & Metadata
     status          agent_status DEFAULT 'active',
@@ -91,7 +103,10 @@ CREATE TABLE agents (
 
 CREATE INDEX idx_agents_api_key ON agents(api_key_hash);
 CREATE INDEX idx_agents_truth_score ON agents(truth_score DESC);
+CREATE INDEX idx_agents_grade ON agents(grade);
 CREATE INDEX idx_agents_status ON agents(status);
+CREATE INDEX idx_agents_provider ON agents(provider);
+CREATE INDEX idx_agents_certified ON agents(certified) WHERE certified = TRUE;
 
 -- ---------------------------------------------------------------------------
 -- WALLETS: Multi-currency agent wallets
@@ -555,15 +570,150 @@ SELECT
 FROM markets m
 WHERE m.status IN ('active', 'halted');
 
+-- ---------------------------------------------------------------------------
+-- AGENT_RATINGS: Historical rating snapshots (audit trail)
+-- ---------------------------------------------------------------------------
+CREATE TABLE agent_ratings (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    
+    agent_id        UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+    
+    -- Rating Snapshot
+    truth_score     DECIMAL(5,4) NOT NULL,
+    grade           VARCHAR(3) NOT NULL,
+    brier_score     DECIMAL(5,4),
+    sharpe_ratio    DECIMAL(8,4),
+    win_rate        DECIMAL(5,4),
+    max_drawdown    DECIMAL(5,4),
+    total_trades    INTEGER,
+    total_pnl       DECIMAL(20,8),
+    
+    -- Composite Breakdown
+    brier_component     DECIMAL(5,4),    -- 35% weight
+    sharpe_component    DECIMAL(5,4),    -- 25% weight
+    winrate_component   DECIMAL(5,4),    -- 20% weight
+    consistency_component DECIMAL(5,4),  -- 10% weight
+    risk_component      DECIMAL(5,4),    -- 10% weight
+    
+    -- Grade Change
+    previous_grade  VARCHAR(3),
+    grade_change    VARCHAR(10),         -- 'upgrade', 'downgrade', 'maintain'
+    
+    -- Snapshot period
+    period_start    TIMESTAMPTZ NOT NULL,
+    period_end      TIMESTAMPTZ NOT NULL,
+    
+    -- Timestamps
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_agent_ratings_agent ON agent_ratings(agent_id);
+CREATE INDEX idx_agent_ratings_grade ON agent_ratings(grade);
+CREATE INDEX idx_agent_ratings_created ON agent_ratings(created_at DESC);
+
+-- ---------------------------------------------------------------------------
+-- SUBSCRIPTIONS: Stripe-powered billing for rating API access
+-- ---------------------------------------------------------------------------
+CREATE TABLE subscriptions (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    
+    -- User/Org
+    user_id         UUID NOT NULL,
+    email           VARCHAR(255),
+    
+    -- Stripe References
+    stripe_customer_id      VARCHAR(255),
+    stripe_subscription_id  VARCHAR(255),
+    stripe_price_id         VARCHAR(255),
+    
+    -- Plan
+    plan_tier       VARCHAR(20) NOT NULL DEFAULT 'free',  -- free, developer, pro, enterprise
+    agent_slots     INTEGER DEFAULT 1,
+    api_calls_limit INTEGER DEFAULT 100,                   -- per day
+    
+    -- Status
+    status          VARCHAR(20) DEFAULT 'active',          -- active, past_due, cancelled
+    
+    -- Timestamps
+    current_period_start TIMESTAMPTZ,
+    current_period_end   TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ DEFAULT NOW(),
+    cancelled_at    TIMESTAMPTZ
+);
+
+CREATE INDEX idx_subscriptions_user ON subscriptions(user_id);
+CREATE INDEX idx_subscriptions_stripe ON subscriptions(stripe_customer_id);
+CREATE INDEX idx_subscriptions_status ON subscriptions(status);
+
+-- ---------------------------------------------------------------------------
+-- CERTIFICATIONS: Official agent certifications
+-- ---------------------------------------------------------------------------
+CREATE TABLE certifications (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    
+    agent_id        UUID NOT NULL REFERENCES agents(id),
+    
+    -- Certification Details
+    grade_at_certification VARCHAR(3) NOT NULL,
+    truth_score_at_cert    DECIMAL(5,4) NOT NULL,
+    min_trades_met         BOOLEAN DEFAULT FALSE,
+    min_duration_met       BOOLEAN DEFAULT FALSE,
+    
+    -- Validity
+    issued_at       TIMESTAMPTZ DEFAULT NOW(),
+    expires_at      TIMESTAMPTZ,
+    revoked         BOOLEAN DEFAULT FALSE,
+    revoked_at      TIMESTAMPTZ,
+    revoke_reason   TEXT
+);
+
+CREATE INDEX idx_certifications_agent ON certifications(agent_id);
+CREATE INDEX idx_certifications_active ON certifications(agent_id) WHERE NOT revoked;
+
+-- ============================================================================
+-- UPDATED VIEWS
+-- ============================================================================
+
+-- Agent leaderboard view (rating-focused)
+DROP VIEW IF EXISTS v_agent_leaderboard;
+CREATE VIEW v_agent_leaderboard AS
+SELECT 
+    a.id,
+    a.name,
+    a.provider,
+    a.model,
+    a.truth_score,
+    a.grade,
+    a.certified,
+    a.brier_score,
+    a.sharpe_ratio,
+    a.max_drawdown,
+    a.total_trades,
+    a.winning_trades,
+    CASE WHEN a.total_trades > 0 
+        THEN ROUND(a.winning_trades::DECIMAL / a.total_trades, 4) 
+        ELSE 0 
+    END as win_rate,
+    a.total_pnl,
+    w.available + w.locked as total_balance,
+    a.last_active_at
+FROM agents a
+LEFT JOIN wallets w ON a.id = w.agent_id
+WHERE a.status = 'active'
+ORDER BY a.truth_score DESC, a.total_pnl DESC;
+
 -- ============================================================================
 -- SEED DATA FOR TESTING
 -- ============================================================================
 
 -- Insert a test agent (for development)
 -- API Key: "tn_test_key_development_only" (hash this in production!)
--- INSERT INTO agents (name, description, api_key_hash)
+-- INSERT INTO agents (name, description, api_key_hash, provider, model)
 -- VALUES (
 --     'TestAgent-001',
 --     'Development test agent',
---     crypt('tn_test_key_development_only', gen_salt('bf'))
+--     crypt('tn_test_key_development_only', gen_salt('bf')),
+--     'OpenAI',
+--     'gpt-4o'
 -- );

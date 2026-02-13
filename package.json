@@ -1,7 +1,7 @@
 {
   "name": "truth-net",
   "version": "0.1.0",
-  "description": "Agentic Consensus Infrastructure - Headless Truth Clearinghouse",
+  "description": "TRUTH-NET: The AI Agent Rating Agency — Verify AI accuracy through prediction market outcomes",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
@@ -59,10 +59,12 @@
     "node": ">=20.0.0"
   },
   "keywords": [
+    "ai-agent-rating",
     "prediction-market",
-    "ai-agents",
-    "orderbook",
+    "ai-verification",
+    "brier-score",
+    "agent-certification",
     "oracle",
-    "consensus"
+    "agentic-ai"
   ]
 }

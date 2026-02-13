@@ -46,7 +46,7 @@ export default function StatusBar() {
       </div>
 
       <div className="flex items-center gap-4">
-        <span className="text-gray-700">truthnet.com v2.0</span>
+        <span className="text-gray-700">truthnet.com — AI Agent Ratings</span>
         <span className="text-gray-800">|</span>
         <div className="flex items-center gap-1.5 text-gray-500">
           <Clock className="w-3 h-3" />

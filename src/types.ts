@@ -1,6 +1,6 @@
 /**
  * TRUTH-NET Core Type Definitions
- * All types are designed for machine-readability and strict JSON schema compliance
+ * AI Agent Rating Agency — All types designed for machine-readability and strict JSON schema compliance
  */
 
 // ============================================================================
@@ -103,7 +103,15 @@ export interface Agent {
   id: string;
   name: string;
   description?: string;
-  truth_score: number; // 0.0000 to 1.0000
+  provider?: string;       // e.g., "OpenAI", "Anthropic"
+  model?: string;          // e.g., "gpt-4o", "claude-3.5-sonnet"
+  truth_score: number;     // 0-100 composite rating
+  grade: string;           // AAA, AA, A, BBB, BB, B, CCC, NR
+  certified: boolean;
+  certified_at?: Date;
+  brier_score: number;     // 0 = perfect, 1 = worst
+  sharpe_ratio: number;
+  max_drawdown: number;
   total_trades: number;
   winning_trades: number;
   total_staked: number;

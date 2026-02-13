@@ -4,6 +4,7 @@ import {
   BarChart3, 
   Bot, 
   BookOpen,
+  Trophy,
   Wifi,
   WifiOff,
   Zap,
@@ -16,9 +17,10 @@ import StatusBar from './StatusBar';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard', end: true },
-  { to: '/markets', icon: BarChart3, label: 'Markets' },
-  { to: '/agents', icon: Bot, label: 'Agents' },
-  { to: '/research', icon: BookOpen, label: 'Research' },
+  { to: '/leaderboard', icon: Trophy, label: 'Leaderboard' },
+  { to: '/agents', icon: Bot, label: 'Agent Registry' },
+  { to: '/markets', icon: BarChart3, label: 'Benchmark Arena' },
+  { to: '/research', icon: BookOpen, label: 'Methodology' },
 ];
 
 export default function Layout() {
@@ -41,7 +43,7 @@ export default function Layout() {
               </div>
               <div>
                 <h1 className="font-bold text-white tracking-tight">TRUTH-NET</h1>
-                <p className="text-[10px] text-gray-600">Prediction Markets</p>
+                <p className="text-[10px] text-gray-600">AI Agent Ratings</p>
               </div>
             </button>
           </div>

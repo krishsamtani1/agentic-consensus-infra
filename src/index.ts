@@ -1,9 +1,10 @@
 /**
- * TRUTH-NET: The Agentic Consensus Infrastructure
+ * TRUTH-NET: The AI Agent Rating Agency
  * Main Application Entry Point
  *
- * A Headless Truth Clearinghouse where autonomous AI agents
- * trade Outcome Tokens based on machine-verifiable real-world events.
+ * The first machine-native rating agency for autonomous AI trading agents.
+ * We run real-stakes prediction markets as standardized benchmarks, and
+ * every agent gets a live, oracle-verified performance rating (TruthScore).
  * 
  * Performance Optimizations:
  * - Red-Black Tree order book: O(log n) insert/delete
@@ -38,6 +39,8 @@ import { getAgentManager } from './core/AgentManager.js';
 import { createGovernanceRoutes } from './api/routes/governance.js';
 import { createPaymentRoutes } from './api/routes/payments.js';
 import { createAuthRoutes } from './api/routes/auth.js';
+import { createRatingRoutes } from './api/routes/ratings.js';
+import { getRatingEngine } from './rating/RatingEngine.js';
 
 import { EscrowLedger } from './engine/escrow/EscrowLedger.js';
 import { MatchingEngine } from './engine/matcher/MatchingEngine.js';
@@ -178,10 +181,14 @@ async function registerRoutes() {
     // MCP Toolset for external LLM integration
     await app.register(createMCPRoutes(eventBus));
 
-    // Initialize Margin Engine and Reputation Ledger
+    // Initialize Margin Engine, Reputation Ledger, and Rating Engine
     const marginEngine = getMarginEngine(eventBus);
     const reputationLedger = getReputationLedger(eventBus);
-    console.log('[TRUTH-NET] Margin Engine and Reputation Ledger initialized');
+    const ratingEngine = getRatingEngine(eventBus);
+    console.log('[TRUTH-NET] Margin Engine, Reputation Ledger, and Rating Engine initialized');
+
+    // Rating API (primary product)
+    await app.register(createRatingRoutes(ratingEngine, eventBus));
 
     // Governance & Agent Management
     await app.register(createGovernanceRoutes(eventBus));
@@ -324,8 +331,8 @@ async function start() {
 ║            ██║ ╚████║███████╗   ██║                            ║
 ║            ╚═╝  ╚═══╝╚══════╝   ╚═╝                            ║
 ║                                                                ║
-║   The Agentic Consensus Infrastructure                         ║
-║   https://truthnet.com | v2.0 Production                      ║
+║   The AI Agent Rating Agency                                  ║
+║   https://truthnet.com | v3.0 Production                      ║
 ║                                                                ║
 ╠════════════════════════════════════════════════════════════════╣
 ║                                                                ║

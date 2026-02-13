@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard';
 import Markets from './pages/Markets';
 import Agents from './pages/Agents';
 import Research from './pages/Research';
+import Leaderboard from './pages/Leaderboard';
 import Onboarding from './pages/Onboarding';
 
 function AppRoutes() {
@@ -32,6 +33,7 @@ function AppRoutes() {
           <Route path="markets" element={<Markets />} />
           <Route path="agents" element={<Agents />} />
           <Route path="research" element={<Research />} />
+          <Route path="leaderboard" element={<Leaderboard />} />
         </Route>
       ) : (
         <Route path="*" element={<Navigate to="/onboarding" replace />} />

@@ -1,16 +1,22 @@
+/**
+ * TRUTH-NET Dashboard
+ * Overview page: top-rated agents, active verification challenges, system health
+ */
+
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { 
+import {
   TrendingUp, TrendingDown, Users, DollarSign, BarChart3,
-  ArrowRight, Activity, Clock, Flame, Target,
-  CreditCard, Bot, PieChart, Zap, CheckCircle2
+  ArrowRight, Activity, Clock, Flame, Target, Award,
+  CreditCard, Bot, PieChart, Zap, CheckCircle2, Trophy,
+  ShieldCheck, Star, ExternalLink
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
-import { 
-  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, 
-  PieChart as RPieChart, Pie, Cell 
+import {
+  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  PieChart as RPieChart, Pie, Cell
 } from 'recharts';
 import { useAuth } from '../hooks/useAuth';
 import { apiClient, Market } from '../api/client';
@@ -26,25 +32,30 @@ const pnlData = Array.from({ length: 30 }, (_, i) => {
 let cum = 0;
 pnlData.forEach(d => { cum += d.pnl; d.cumulative = cum; });
 
-const portfolioData = [
-  { name: 'Geopolitics', value: 35, color: '#06b6d4' },
-  { name: 'Tech & AI', value: 25, color: '#8b5cf6' },
-  { name: 'Crypto', value: 20, color: '#f59e0b' },
-  { name: 'Economics', value: 12, color: '#10b981' },
-  { name: 'Other', value: 8, color: '#6b7280' },
+const gradeDistribution = [
+  { name: 'AAA', value: 1, color: '#10b981' },
+  { name: 'AA', value: 2, color: '#06b6d4' },
+  { name: 'A', value: 2, color: '#3b82f6' },
+  { name: 'BBB', value: 3, color: '#f59e0b' },
+  { name: 'BB', value: 2, color: '#f97316' },
+  { name: 'B/CCC', value: 2, color: '#ef4444' },
+  { name: 'NR', value: 3, color: '#6b7280' },
 ];
 
-const volumeData = Array.from({ length: 24 }, (_, i) => ({
-  hour: `${String(i).padStart(2, '0')}:00`,
-  volume: Math.random() * 50000 + 10000,
-}));
+const topRatedAgents = [
+  { name: 'TRUTH-NET Oracle', grade: 'AAA', brier: 0.08, accuracy: 92, predictions: 2847, domain: 'Multi', avatar: '⚡', certified: true },
+  { name: 'Tech Oracle', grade: 'AA', brier: 0.14, accuracy: 85, predictions: 567, domain: 'Tech', avatar: '💻', certified: true },
+  { name: 'Geopolitical Analyst', grade: 'AA', brier: 0.17, accuracy: 82, predictions: 892, domain: 'Geopolitics', avatar: '🌍', certified: true },
+  { name: 'Logistics Sentinel', grade: 'A', brier: 0.21, accuracy: 76, predictions: 1234, domain: 'Logistics', avatar: '🚢', certified: true },
+  { name: 'Weather Quant', grade: 'A', brier: 0.20, accuracy: 75, predictions: 342, domain: 'Climate', avatar: '🌡️', certified: false },
+];
 
-const recentActivity = [
-  { id: '1', time: '2m ago', agent: 'Geopolitical Analyst', action: 'Bought YES', market: 'US-China Trade Deal by Q2', amount: '$4,500', confidence: 82 },
-  { id: '2', time: '5m ago', agent: 'Logistics Sentinel', action: 'Sold NO', market: 'Panama Canal Restrictions Lifted', amount: '$2,800', confidence: 91 },
-  { id: '3', time: '12m ago', agent: 'Tech Oracle', action: 'Bought YES', market: 'GPT-5 Released Q1 2026', amount: '$1,800', confidence: 73 },
-  { id: '4', time: '18m ago', agent: 'Contrarian Alpha', action: 'Bought NO', market: 'Bitcoin Above $150K by March', amount: '$5,500', confidence: 67 },
-  { id: '5', time: '25m ago', agent: 'Market Maker Prime', action: 'Provided Liquidity', market: 'Fed Rate Cut March FOMC', amount: '$12,000', confidence: 50 },
+const recentVerifications = [
+  { id: '1', time: '3m ago', agent: 'Tech Oracle', action: 'Predicted YES', market: 'OpenAI Cerebras deployment ships to GA', result: 'pending', confidence: 82 },
+  { id: '2', time: '8m ago', agent: 'Geopolitical Analyst', action: 'Predicted NO', market: 'Poland-US vassal dispute escalates', result: 'pending', confidence: 71 },
+  { id: '3', time: '15m ago', agent: 'Logistics Sentinel', action: 'Predicted YES', market: 'FedEx InPost deal closes by Q2', result: 'pending', confidence: 88 },
+  { id: '4', time: '22m ago', agent: 'Weather Quant', action: 'Predicted NO', market: 'Atlantic storm reaches Cat 3+', result: 'correct', confidence: 91 },
+  { id: '5', time: '30m ago', agent: 'Market Maker Prime', action: 'Provided liquidity', market: 'Apple stock -5% post earnings', result: 'pending', confidence: 50 },
 ];
 
 // ============================================================================
@@ -65,8 +76,8 @@ function GettingStarted() {
   const hasFunds = (balance?.available ?? 0) > 0;
   const steps = [
     { label: 'Fund your account', done: hasFunds, action: () => {}, icon: CreditCard },
-    { label: 'Deploy an agent', done: false, action: () => navigate('/agents'), icon: Bot },
-    { label: 'Place your first trade', done: false, action: () => navigate('/markets'), icon: TrendingUp },
+    { label: 'Register an agent', done: false, action: () => navigate('/agents'), icon: Bot },
+    { label: 'View the leaderboard', done: false, action: () => navigate('/leaderboard'), icon: Trophy },
   ];
 
   return (
@@ -91,10 +102,67 @@ function GettingStarted() {
 }
 
 // ============================================================================
-// TOP MARKETS
+// TOP RATED AGENTS
 // ============================================================================
 
-function TopMarkets() {
+function TopAgents() {
+  const navigate = useNavigate();
+
+  const gradeColor = (grade: string) => {
+    if (grade.startsWith('A')) return 'text-emerald-400';
+    if (grade.startsWith('B')) return 'text-cyan-400';
+    if (grade.startsWith('C')) return 'text-amber-400';
+    if (grade === 'D') return 'text-orange-400';
+    return 'text-red-400';
+  };
+
+  return (
+    <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg overflow-hidden">
+      <div className="p-3 border-b border-[#111] flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Trophy className="w-3.5 h-3.5 text-amber-400" />
+          <span className="text-sm font-medium text-white">Top Rated Agents</span>
+        </div>
+        <Link to="/leaderboard" className="text-[10px] text-cyan-400 hover:text-cyan-300 flex items-center gap-0.5">
+          Full Leaderboard <ArrowRight className="w-3 h-3" />
+        </Link>
+      </div>
+      <div className="divide-y divide-[#111]">
+        {topRatedAgents.map((agent, i) => (
+          <button
+            key={agent.name}
+            onClick={() => navigate('/leaderboard')}
+            className="w-full p-2.5 hover:bg-white/[0.02] transition-colors flex items-center gap-3 text-left"
+          >
+            <span className="text-[10px] font-mono text-gray-700 w-4">#{i + 1}</span>
+            <span className="text-lg">{agent.avatar}</span>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5">
+                <p className="text-xs text-white font-medium truncate">{agent.name}</p>
+                {agent.certified && (
+                  <ShieldCheck className="w-3 h-3 text-emerald-400 flex-shrink-0" />
+                )}
+              </div>
+              <span className="text-[9px] text-gray-600">{agent.domain} · {agent.predictions} predictions</span>
+            </div>
+            <div className="text-right">
+              <span className={clsx('text-sm font-bold font-mono', gradeColor(agent.grade))}>
+                {agent.grade}
+              </span>
+              <p className="text-[9px] text-gray-600 font-mono">Brier {agent.brier.toFixed(2)}</p>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// TRENDING MARKETS
+// ============================================================================
+
+function TrendingMarkets() {
   const { data } = useQuery({
     queryKey: ['top-markets'],
     queryFn: () => apiClient.get<{ markets: Market[]; total: number }>('/markets?limit=100'),
@@ -103,7 +171,7 @@ function TopMarkets() {
   });
 
   const top = (data?.markets || [])
-    .sort((a, b) => ((b.volume_yes||0)+(b.volume_no||0)) - ((a.volume_yes||0)+(a.volume_no||0)))
+    .sort((a, b) => ((b.volume_yes || 0) + (b.volume_no || 0)) - ((a.volume_yes || 0) + (a.volume_no || 0)))
     .slice(0, 5);
 
   return (
@@ -111,22 +179,22 @@ function TopMarkets() {
       <div className="p-3 border-b border-[#111] flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Flame className="w-3.5 h-3.5 text-orange-400" />
-          <span className="text-sm font-medium text-white">Trending Markets</span>
+          <span className="text-sm font-medium text-white">Active Challenges</span>
         </div>
         <Link to="/markets" className="text-[10px] text-cyan-400 hover:text-cyan-300 flex items-center gap-0.5">
-          View All <ArrowRight className="w-3 h-3" />
+          All Markets <ArrowRight className="w-3 h-3" />
         </Link>
       </div>
       <div className="divide-y divide-[#111]">
         {top.length === 0 ? (
-          <div className="p-3 text-center text-gray-600 text-xs">Loading markets...</div>
+          <div className="p-3 text-center text-gray-600 text-xs">Loading challenges...</div>
         ) : top.map((m, i) => {
-          const vol = (m.volume_yes||0)+(m.volume_no||0);
-          const yp = vol > 0 ? (m.volume_yes||0)/vol : (m.last_price_yes ?? 0.5);
+          const vol = (m.volume_yes || 0) + (m.volume_no || 0);
+          const yp = vol > 0 ? (m.volume_yes || 0) / vol : (m.last_price_yes ?? 0.5);
           return (
             <div key={m.id} className="p-2.5 hover:bg-white/[0.02] transition-colors">
               <div className="flex items-center gap-2">
-                <span className="text-[10px] font-mono text-gray-700 w-4">#{i+1}</span>
+                <span className="text-[10px] font-mono text-gray-700 w-4">#{i + 1}</span>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs text-white truncate">{m.title}</p>
                   <span className="text-[9px] font-mono text-gray-600">{m.ticker}</span>
@@ -135,7 +203,7 @@ function TopMarkets() {
                   <span className={clsx('text-xs font-mono font-bold', yp > 0.5 ? 'text-emerald-400' : 'text-red-400')}>
                     {(yp * 100).toFixed(0)}¢
                   </span>
-                  <p className="text-[9px] text-gray-600 font-mono">${(vol/1000).toFixed(0)}K vol</p>
+                  <p className="text-[9px] text-gray-600 font-mono">${(vol / 1000).toFixed(0)}K vol</p>
                 </div>
               </div>
             </div>
@@ -150,12 +218,15 @@ function TopMarkets() {
 // STAT CARD
 // ============================================================================
 
-function StatCard({ title, value, trend, color }: {
-  title: string; value: string | number; trend?: number; color: string;
+function StatCard({ title, value, trend, icon: Icon }: {
+  title: string; value: string | number; trend?: number; icon: any;
 }) {
   return (
     <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg p-4">
-      <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider mb-1">{title}</p>
+      <div className="flex items-center justify-between mb-1">
+        <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider">{title}</p>
+        <Icon className="w-3.5 h-3.5 text-gray-700" />
+      </div>
       <p className="text-xl font-bold text-white font-mono tabular-nums">{value}</p>
       {trend !== undefined && (
         <div className="mt-1.5 flex items-center gap-1">
@@ -179,14 +250,14 @@ export default function Dashboard() {
     queryFn: async () => {
       const response = await apiClient.get<{ markets: Market[]; total: number }>('/markets?limit=100');
       const markets = response?.markets || [];
-      const totalVolume = markets.reduce((a, m) => a + (m.volume_yes||0) + (m.volume_no||0), 0);
-      return { totalVolume, activeMarkets: markets.length, totalAgents: 10, avgAccuracy: 0.72 };
+      const totalVolume = markets.reduce((a, m) => a + (m.volume_yes || 0) + (m.volume_no || 0), 0);
+      return { totalVolume, activeMarkets: markets.length, totalAgents: 20, certifiedAgents: 3, avgBrier: 0.22 };
     },
     staleTime: 30_000,
     refetchInterval: 30_000,
   });
 
-  const stats = statsData || { totalVolume: 0, activeMarkets: 0, totalAgents: 10, avgAccuracy: 0.72 };
+  const stats = statsData || { totalVolume: 0, activeMarkets: 0, totalAgents: 20, certifiedAgents: 3, avgBrier: 0.22 };
 
   return (
     <div className="p-6">
@@ -196,27 +267,63 @@ export default function Dashboard() {
       <div className="flex items-center justify-between mb-5">
         <div>
           <h1 className="text-xl font-bold text-white">Dashboard</h1>
-          <p className="text-gray-600 text-sm">Portfolio overview and market activity</p>
+          <p className="text-gray-600 text-sm">AI agent performance overview and verification activity</p>
         </div>
         <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded-full font-mono">LIVE</span>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-3 mb-5">
-        <StatCard title="Total Volume" value={`$${(stats.totalVolume/1000).toFixed(1)}K`} trend={12.5} color="cyan" />
-        <StatCard title="Active Markets" value={stats.activeMarkets} trend={8.3} color="purple" />
-        <StatCard title="Active Agents" value={stats.totalAgents} trend={-2.1} color="orange" />
-        <StatCard title="Avg Accuracy" value={(stats.avgAccuracy * 100).toFixed(0) + '%'} trend={3.2} color="green" />
+      <div className="grid grid-cols-5 gap-3 mb-5">
+        <StatCard title="Rated Agents" value={stats.totalAgents} trend={8.3} icon={Bot} />
+        <StatCard title="Certified" value={stats.certifiedAgents} trend={50.0} icon={ShieldCheck} />
+        <StatCard title="Active Challenges" value={stats.activeMarkets} trend={12.5} icon={Target} />
+        <StatCard title="Network Volume" value={`$${(stats.totalVolume / 1000).toFixed(1)}K`} trend={15.2} icon={BarChart3} />
+        <StatCard title="Avg Brier Score" value={stats.avgBrier.toFixed(2)} trend={-5.1} icon={Award} />
       </div>
 
       {/* Main Grid */}
       <div className="grid grid-cols-12 gap-4">
         {/* Left Column */}
         <div className="col-span-8 space-y-4">
-          {/* P&L Chart */}
+          {/* Verification Activity Feed */}
+          <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg overflow-hidden">
+            <div className="p-3 border-b border-[#111] flex items-center gap-2">
+              <Activity className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="text-sm font-medium text-white">Verification Activity</span>
+              <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded-full ml-1">LIVE</span>
+            </div>
+            <div className="divide-y divide-[#111]">
+              {recentVerifications.map(item => (
+                <div key={item.id} className="p-3 hover:bg-white/[0.01] transition-colors">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className="text-xs font-medium text-white">{item.agent}</span>
+                        <span className={clsx('text-[10px] px-1.5 py-0.5 rounded font-medium',
+                          item.action.includes('YES') ? 'bg-emerald-500/20 text-emerald-400' :
+                          item.action.includes('NO') ? 'bg-red-500/20 text-red-400' :
+                          'bg-blue-500/20 text-blue-400'
+                        )}>{item.action}</span>
+                        {item.result === 'correct' && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-emerald-500/30 text-emerald-300">CORRECT</span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-500 truncate">{item.market}</p>
+                    </div>
+                    <div className="text-right ml-4">
+                      <span className="text-xs font-mono text-white">{item.confidence}% conf</span>
+                      <p className="text-[10px] text-gray-600">{item.time}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Network Performance Chart */}
           <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg p-4">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-medium text-white">Portfolio P&L (30d)</span>
+              <span className="text-sm font-medium text-white">Network P&L (30d)</span>
               <span className={clsx('text-sm font-mono font-bold', cum >= 0 ? 'text-emerald-400' : 'text-red-400')}>
                 {cum >= 0 ? '+' : ''}${cum.toFixed(0)}
               </span>
@@ -231,7 +338,7 @@ export default function Dashboard() {
                     </linearGradient>
                   </defs>
                   <XAxis dataKey="day" stroke="#333" fontSize={9} tickLine={false} axisLine={false} interval={4} />
-                  <YAxis stroke="#333" fontSize={9} tickLine={false} axisLine={false} tickFormatter={v => `$${(v/1000).toFixed(1)}K`} />
+                  <YAxis stroke="#333" fontSize={9} tickLine={false} axisLine={false} tickFormatter={v => `$${(v / 1000).toFixed(1)}K`} />
                   <Tooltip contentStyle={{ backgroundColor: '#0a0a0a', border: '1px solid #1a1a1a', borderRadius: '8px', fontSize: '11px' }} />
                   <Area type="monotone" dataKey="cumulative" stroke="#10b981" strokeWidth={2} fill="url(#pnlGrad)" />
                 </AreaChart>
@@ -239,87 +346,38 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Recent Activity */}
-          <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg overflow-hidden">
-            <div className="p-3 border-b border-[#111] flex items-center gap-2">
-              <Activity className="w-3.5 h-3.5 text-cyan-400" />
-              <span className="text-sm font-medium text-white">Recent Activity</span>
-              <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded-full ml-1">LIVE</span>
-            </div>
-            <div className="divide-y divide-[#111]">
-              {recentActivity.map(item => (
-                <div key={item.id} className="p-3 hover:bg-white/[0.01] transition-colors">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <span className="text-xs font-medium text-white">{item.agent}</span>
-                        <span className={clsx('text-[10px] px-1.5 py-0.5 rounded font-medium',
-                          item.action.includes('Bought YES') ? 'bg-emerald-500/20 text-emerald-400' :
-                          item.action.includes('Sold') || item.action.includes('NO') ? 'bg-red-500/20 text-red-400' :
-                          'bg-blue-500/20 text-blue-400'
-                        )}>{item.action}</span>
-                      </div>
-                      <p className="text-xs text-gray-500 truncate">{item.market}</p>
-                    </div>
-                    <div className="text-right ml-4">
-                      <span className="text-xs font-mono text-white">{item.amount}</span>
-                      <p className="text-[10px] text-gray-600">{item.time}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Volume Chart */}
+          {/* Grade Distribution */}
           <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg p-4">
-            <span className="text-sm font-medium text-white">24h Trading Volume</span>
-            <div className="h-32 mt-3">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={volumeData}>
-                  <defs>
-                    <linearGradient id="volGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#06b6d4" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="hour" stroke="#333" fontSize={9} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#333" fontSize={9} tickLine={false} axisLine={false} tickFormatter={v => `$${(v/1000).toFixed(0)}K`} />
-                  <Tooltip contentStyle={{ backgroundColor: '#0a0a0a', border: '1px solid #1a1a1a', borderRadius: '8px', fontSize: '11px' }} />
-                  <Area type="monotone" dataKey="volume" stroke="#06b6d4" strokeWidth={2} fill="url(#volGrad)" />
-                </AreaChart>
-              </ResponsiveContainer>
+            <span className="text-sm font-medium text-white">Agent Grade Distribution</span>
+            <div className="flex items-center gap-6 mt-3">
+              <div className="h-32 w-32 flex-shrink-0">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RPieChart>
+                    <Pie data={gradeDistribution} cx="50%" cy="50%" innerRadius={30} outerRadius={50}
+                      paddingAngle={3} dataKey="value" strokeWidth={0}>
+                      {gradeDistribution.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                    </Pie>
+                    <Tooltip contentStyle={{ backgroundColor: '#0a0a0a', border: '1px solid #1a1a1a', borderRadius: '8px', fontSize: '11px' }} />
+                  </RPieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="grid grid-cols-3 gap-x-6 gap-y-1.5 flex-1">
+                {gradeDistribution.map(d => (
+                  <div key={d.name} className="flex items-center gap-2">
+                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: d.color }} />
+                    <span className="text-xs text-gray-400">{d.name}</span>
+                    <span className="text-xs font-mono text-white ml-auto">{d.value}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
 
         {/* Right Column */}
         <div className="col-span-4 space-y-4">
-          {/* Portfolio Allocation */}
-          <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg p-4">
-            <span className="text-sm font-medium text-white">Portfolio Allocation</span>
-            <div className="h-36 flex items-center justify-center mt-2">
-              <ResponsiveContainer width="100%" height="100%">
-                <RPieChart>
-                  <Pie data={portfolioData} cx="50%" cy="50%" innerRadius={35} outerRadius={55}
-                    paddingAngle={3} dataKey="value" strokeWidth={0}>
-                    {portfolioData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-                  </Pie>
-                  <Tooltip contentStyle={{ backgroundColor: '#0a0a0a', border: '1px solid #1a1a1a', borderRadius: '8px', fontSize: '11px' }} />
-                </RPieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="grid grid-cols-2 gap-1 mt-1">
-              {portfolioData.map(d => (
-                <div key={d.name} className="flex items-center gap-1.5">
-                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: d.color }} />
-                  <span className="text-[10px] text-gray-500">{d.name} {d.value}%</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <TopMarkets />
+          <TopAgents />
+          <TrendingMarkets />
 
           {/* System Status */}
           <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg p-4">
@@ -331,7 +389,7 @@ export default function Dashboard() {
               {[
                 { label: 'Throughput', value: '42 tx/s' },
                 { label: 'Latency (p99)', value: '2.3ms' },
-                { label: 'Order Book Depth', value: '1,832' },
+                { label: 'Active Oracles', value: '29 feeds' },
                 { label: 'Circuit Breakers', value: 'OK' },
               ].map(item => (
                 <div key={item.label} className="flex justify-between items-center">

@@ -1,11 +1,12 @@
 /**
- * TRUTH-NET KYA (Know Your Agent) Cards
+ * TRUTH-NET Agent Registry
  * 
- * 2026 A2A Standard compliant agent management with:
- * - Brier Score (accuracy) and ERC-8004 Reputation Hash
+ * AI Agent Rating Cards with:
+ * - TruthScore rating and grade (AAA → CCC)
+ * - Brier Score (prediction accuracy) and oracle verification
  * - Data source permissions (Google News, MarineTraffic, etc.)
  * - MCP (Model Context Protocol) integration
- * - War Room professional layout
+ * - Certification status
  */
 
 import { useState, useEffect } from 'react';
@@ -855,8 +856,8 @@ export default function Agents() {
         <div className="max-w-7xl mx-auto px-6 py-6">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-white">Agents</h1>
-              <p className="text-gray-500 text-sm mt-1">AI Agent Registry & Performance</p>
+              <h1 className="text-2xl font-bold text-white">Agent Registry</h1>
+              <p className="text-gray-500 text-sm mt-1">Register, configure, and certify AI agents</p>
             </div>
             <button
               onClick={() => setShowCreate(true)}
