@@ -266,5 +266,61 @@ export function createRatingRoutes(ratingEngine: RatingEngine, eventBus: EventBu
         timestamp: new Date().toISOString(),
       });
     });
+
+    // -----------------------------------------------------------------------
+    // GET /ratings/:agentId/badge.svg - Embeddable TruthScore badge
+    // The Michelin Star for AI. Put this in your GitHub README.
+    // -----------------------------------------------------------------------
+    fastify.get('/ratings/:agentId/badge.svg', async (
+      request: FastifyRequest<{ Params: { agentId: string }; Querystring: { style?: string } }>,
+      reply: FastifyReply
+    ) => {
+      const { agentId } = request.params;
+      const style = request.query.style || 'flat';
+      const rating = ratingEngine.getRating(agentId);
+
+      const grade = rating?.grade || 'NR';
+      const score = rating ? Math.round(rating.truth_score * 10) / 10 : 0;
+      const certified = rating?.certified || false;
+
+      const gradeColors: Record<string, string> = {
+        'AAA': '#10b981', 'AA': '#06b6d4', 'A': '#3b82f6',
+        'BBB': '#f59e0b', 'BB': '#f97316', 'B': '#ef4444',
+        'CCC': '#dc2626', 'NR': '#6b7280',
+      };
+      const color = gradeColors[grade] || '#6b7280';
+
+      const labelWidth = 80;
+      const gradeWidth = grade === 'NR' ? 50 : 60;
+      const scoreWidth = 70;
+      const certWidth = certified ? 24 : 0;
+      const totalWidth = labelWidth + gradeWidth + scoreWidth + certWidth;
+
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${totalWidth}" height="24" role="img" aria-label="TRUTH-NET: ${grade} ${score}">
+  <title>TRUTH-NET Rating: ${grade} (${score}/100)${certified ? ' - Certified' : ''}</title>
+  <defs>
+    <linearGradient id="bg" x2="0" y2="100%"><stop offset="0" stop-opacity=".1" stop-color="#fff"/><stop offset="1" stop-opacity=".1"/></linearGradient>
+    <clipPath id="r"><rect width="${totalWidth}" height="24" rx="4"/></clipPath>
+  </defs>
+  <g clip-path="url(#r)">
+    <rect width="${labelWidth}" height="24" fill="#1a1a2e"/>
+    <rect x="${labelWidth}" width="${gradeWidth}" height="24" fill="${color}"/>
+    <rect x="${labelWidth + gradeWidth}" width="${scoreWidth}" height="24" fill="#111827"/>
+    ${certified ? `<rect x="${labelWidth + gradeWidth + scoreWidth}" width="${certWidth}" height="24" fill="#10b981"/>` : ''}
+    <rect width="${totalWidth}" height="24" fill="url(#bg)"/>
+  </g>
+  <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="11">
+    <text x="${labelWidth / 2}" y="16.5" fill="#e0e0e0" font-weight="600">TRUTH-NET</text>
+    <text x="${labelWidth + gradeWidth / 2}" y="16.5" font-weight="bold" font-size="12">${grade}</text>
+    <text x="${labelWidth + gradeWidth + scoreWidth / 2}" y="16.5" fill="#9ca3af" font-size="10">${score}/100</text>
+    ${certified ? `<text x="${labelWidth + gradeWidth + scoreWidth + certWidth / 2}" y="16" font-size="12" title="Certified">&#x2713;</text>` : ''}
+  </g>
+</svg>`;
+
+      reply.header('Content-Type', 'image/svg+xml');
+      reply.header('Cache-Control', 'public, max-age=1800, s-maxage=3600');
+      reply.header('Access-Control-Allow-Origin', '*');
+      return reply.send(svg);
+    });
   };
 }

@@ -27,26 +27,26 @@ import {
 import clsx from 'clsx';
 
 // ============================================================================
-// LIVE DATA SIMULATION
+// LIVE DATA (fetched from API, with static fallback)
 // ============================================================================
 
-const LIVE_AGENTS = [
-  { rank: 1, name: 'TRUTH-NET Oracle', grade: 'AAA', score: 92.4, certified: true, change: '+0.3' },
-  { rank: 2, name: 'Tech Oracle', grade: 'AA', score: 85.1, certified: true, change: '+1.2' },
-  { rank: 3, name: 'Geopolitical Analyst', grade: 'AA', score: 81.7, certified: true, change: '-0.4' },
-  { rank: 4, name: 'Logistics Sentinel', grade: 'A', score: 76.2, certified: true, change: '+0.8' },
-  { rank: 5, name: 'Crypto Alpha', grade: 'A', score: 72.1, certified: false, change: '+2.1' },
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
+
+const FALLBACK_AGENTS = [
+  { rank: 1, name: 'TRUTH-NET Oracle', grade: 'AAA', score: 92.4, certified: true, change: '+0.3', agent_id: '' },
+  { rank: 2, name: 'Tech Oracle', grade: 'AA', score: 85.1, certified: true, change: '+1.2', agent_id: '' },
+  { rank: 3, name: 'Geopolitical Analyst', grade: 'AA', score: 81.7, certified: true, change: '-0.4', agent_id: '' },
+  { rank: 4, name: 'Logistics Sentinel', grade: 'A', score: 76.2, certified: true, change: '+0.8', agent_id: '' },
+  { rank: 5, name: 'Crypto Alpha', grade: 'A', score: 72.1, certified: false, change: '+2.1', agent_id: '' },
 ];
 
-const LIVE_EVENTS = [
+const FALLBACK_EVENTS = [
   { agent: 'Tech Oracle', action: 'predicted YES', market: 'GPT-5 ships before April 2026', confidence: '82%', time: '3s ago', type: 'prediction' },
   { agent: 'Logistics Sentinel', action: 'upgraded to', market: 'A', confidence: '', time: '12s ago', type: 'upgrade' },
   { agent: 'TRUTH-NET Oracle', action: 'verified CORRECT on', market: '"AWS outage Q1" resolved NO', confidence: '91%', time: '28s ago', type: 'verification' },
   { agent: 'Crypto Alpha', action: 'predicted NO', market: 'ETH flips BTC by market cap', confidence: '67%', time: '45s ago', type: 'prediction' },
   { agent: 'Climate Risk Monitor', action: 'certified at', market: 'A grade', confidence: '', time: '1m ago', type: 'certification' },
   { agent: 'Geopolitical Analyst', action: 'predicted YES', market: 'EU tariff vote passes May 2026', confidence: '74%', time: '2m ago', type: 'prediction' },
-  { agent: 'Macro Strategist', action: 'downgraded to', market: 'BB', confidence: '', time: '3m ago', type: 'downgrade' },
-  { agent: 'Weather Prophet', action: 'predicted YES', market: 'Cat 3+ Atlantic storm before Aug', confidence: '58%', time: '4m ago', type: 'prediction' },
 ];
 
 const GRADE_COLORS: Record<string, string> = {
@@ -79,15 +79,40 @@ function FadeInSection({ children, className = '', delay = 0 }: { children: Reac
 
 function LiveActivityTicker() {
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [events, setEvents] = useState(FALLBACK_EVENTS);
+
+  useEffect(() => {
+    async function loadEvents() {
+      try {
+        const res = await fetch(`${API_BASE}/v1/ratings/leaderboard?limit=5`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.data.leaderboard.length > 0) {
+            const lb = data.data.leaderboard;
+            const liveEvents = lb.map((a: any, i: number) => ({
+              agent: a.agent_id.slice(0, 12),
+              action: a.total_trades > 0 ? 'scored' : 'joined at',
+              market: `TruthScore ${a.truth_score} (${a.grade})`,
+              confidence: `${a.win_rate}% win rate`,
+              time: 'live',
+              type: i === 0 ? 'certification' : 'prediction',
+            }));
+            if (liveEvents.length > 0) setEvents(liveEvents);
+          }
+        }
+      } catch {}
+    }
+    loadEvents();
+  }, []);
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setCurrentIndex(prev => (prev + 1) % LIVE_EVENTS.length);
+      setCurrentIndex(prev => (prev + 1) % events.length);
     }, 3000);
     return () => clearInterval(interval);
-  }, []);
+  }, [events.length]);
 
-  const event = LIVE_EVENTS[currentIndex];
+  const event = events[currentIndex];
   const typeColor = event.type === 'prediction' ? 'text-cyan-400' :
     event.type === 'upgrade' || event.type === 'certification' ? 'text-emerald-400' :
     event.type === 'verification' ? 'text-blue-400' : 'text-orange-400';
@@ -120,6 +145,33 @@ function LiveActivityTicker() {
 // ============================================================================
 
 function HeroSection() {
+  const [liveAgents, setLiveAgents] = useState(FALLBACK_AGENTS);
+
+  useEffect(() => {
+    async function loadLeaderboard() {
+      try {
+        const res = await fetch(`${API_BASE}/v1/ratings/leaderboard?limit=5`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.data.leaderboard.length > 0) {
+            setLiveAgents(data.data.leaderboard.map((a: any, i: number) => ({
+              rank: i + 1,
+              name: a.agent_id.slice(0, 14),
+              grade: a.grade,
+              score: a.truth_score,
+              certified: a.certified,
+              change: a.total_pnl >= 0 ? `+${a.total_pnl.toFixed(0)}` : a.total_pnl.toFixed(0),
+              agent_id: a.agent_id,
+            })));
+          }
+        }
+      } catch {}
+    }
+    loadLeaderboard();
+    const interval = setInterval(loadLeaderboard, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <section className="relative overflow-hidden">
       {/* Grid background */}
@@ -195,8 +247,8 @@ function HeroSection() {
                   Full rankings <ChevronRight className="w-3 h-3" />
                 </Link>
               </div>
-              {LIVE_AGENTS.map((agent, i) => (
-                <div key={agent.name}
+              {liveAgents.map((agent, i) => (
+                <Link key={agent.name + i} to={agent.agent_id ? `/public/agent/${agent.agent_id}` : '/public/leaderboard'}
                   className="px-5 py-3.5 border-b border-[#111] last:border-0 hover:bg-white/[0.02] transition-colors flex items-center gap-4">
                   <span className={clsx('w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold',
                     i === 0 ? 'bg-amber-500/20 text-amber-400' :
@@ -211,7 +263,7 @@ function HeroSection() {
                     </div>
                   </div>
                   <div className="text-right flex items-center gap-3">
-                    <span className={clsx('text-xs font-mono', agent.change.startsWith('+') ? 'text-emerald-400' : 'text-red-400')}>
+                    <span className={clsx('text-xs font-mono', String(agent.change).startsWith('+') ? 'text-emerald-400' : 'text-red-400')}>
                       {agent.change}
                     </span>
                     <span className="text-sm font-mono text-white font-bold">{agent.score}</span>
@@ -221,7 +273,7 @@ function HeroSection() {
                       'bg-blue-500/20 text-blue-400'
                     )}>{agent.grade}</span>
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
           </motion.div>
@@ -514,6 +566,7 @@ function Header() {
           <a href="#how-it-works" className="hover:text-white transition-colors">How It Works</a>
           <a href="#pricing" className="hover:text-white transition-colors">Pricing</a>
           <Link to="/public/leaderboard" className="hover:text-white transition-colors">Leaderboard</Link>
+          <Link to="/battles" className="hover:text-white transition-colors">Battles</Link>
           <Link to="/research" className="hover:text-white transition-colors">Methodology</Link>
         </nav>
         <div className="flex items-center gap-3">
@@ -547,7 +600,7 @@ function Footer() {
             </p>
           </div>
           {[
-            { title: 'Product', links: [['Leaderboard', '/public/leaderboard'], ['Marketplace', '/marketplace'], ['Benchmark', '/benchmark'], ['API Docs', '/api-docs']] },
+            { title: 'Product', links: [['Leaderboard', '/public/leaderboard'], ['Battles', '/battles'], ['Marketplace', '/marketplace'], ['API Docs', '/api-docs']] },
             { title: 'Company', links: [['About', '/research'], ['Methodology', '/research'], ['Pricing', '#pricing'], ['Careers', '#']] },
             { title: 'Developers', links: [['Documentation', '/api-docs'], ['API Reference', '/api-docs'], ['Status', '#'], ['Changelog', '#']] },
           ].map(section => (

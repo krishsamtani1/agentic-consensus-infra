@@ -103,7 +103,7 @@ export default function PublicLeaderboard() {
 
   async function fetchLeaderboard() {
     try {
-      const resp = await fetch(`${API_BASE}/ratings/leaderboard?limit=50&include_unrated=true`);
+      const resp = await fetch(`${API_BASE}/v1/ratings/leaderboard?limit=50&include_unrated=true`);
       const data = await resp.json();
       if (data.success && data.data) {
         setAgents(data.data.leaderboard || []);
@@ -113,7 +113,7 @@ export default function PublicLeaderboard() {
           .filter((a: LeaderboardEntry) => a.total_trades > 0)
           .slice(0, 5)
           .map((a: LeaderboardEntry) =>
-            `${a.agent_id.replace('agent-', '').replace(/-001$/, '')} — TruthScore: ${a.truth_score.toFixed(1)} (${a.grade}) — ${a.total_trades} trades, ${(a.win_rate * 100).toFixed(0)}% win rate`
+            `${a.agent_id.replace('agent-', '').replace(/-001$/, '')} — TruthScore: ${a.truth_score.toFixed(1)} (${a.grade}) — ${a.total_trades} trades, ${a.win_rate.toFixed(0)}% win rate`
           );
         setLiveEvents(events);
       }
@@ -148,7 +148,7 @@ export default function PublicLeaderboard() {
       'agent-macro-001': 'Macro Strategist',
       'agent-random-001': 'Noise Trader',
     };
-    return names[id] || id;
+    return names[id] || (id.startsWith('ext-') ? id : id.replace('agent-', '').replace(/-001$/, ''));
   };
 
   const agentModel = (id: string) => {
@@ -178,6 +178,9 @@ export default function PublicLeaderboard() {
             <span className="font-black text-white tracking-tight">TRUTH-NET</span>
           </Link>
           <div className="flex items-center gap-3">
+            <Link to="/battles" className="text-sm text-orange-400 hover:text-orange-300 transition-colors px-3 py-1.5 flex items-center gap-1">
+              Battles
+            </Link>
             <Link to="/onboarding" className="text-sm text-gray-400 hover:text-white transition-colors px-3 py-1.5">Sign In</Link>
             <Link to="/onboarding" className="text-sm font-semibold bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-1.5 rounded-lg transition-colors">
               Rate Your Agent
@@ -282,7 +285,7 @@ export default function PublicLeaderboard() {
                         )}
                       </td>
                       <td className="px-5 py-4">
-                        <div className="flex items-center gap-3">
+                        <Link to={`/public/agent/${agent.agent_id}`} className="flex items-center gap-3">
                           <span className="text-xl">{icon}</span>
                           <div>
                             <p className="text-sm font-semibold text-white group-hover:text-cyan-400 transition-colors">
@@ -290,7 +293,7 @@ export default function PublicLeaderboard() {
                             </p>
                             <p className="text-[10px] text-gray-600">{model}</p>
                           </div>
-                        </div>
+                        </Link>
                       </td>
                       <td className="px-5 py-4 text-center">
                         <span className={clsx('px-2.5 py-1 rounded text-xs font-mono font-black border', gs.bg, gs.text, gs.border)}>
@@ -305,7 +308,7 @@ export default function PublicLeaderboard() {
                         <TrendIndicator pnl={agent.total_pnl} />
                       </td>
                       <td className="px-5 py-4 text-center text-sm text-gray-300 font-mono">
-                        {(agent.win_rate * 100).toFixed(0)}%
+                        {agent.win_rate.toFixed(0)}%
                       </td>
                       <td className="px-5 py-4 text-center text-sm text-gray-400 font-mono">
                         {agent.total_trades}

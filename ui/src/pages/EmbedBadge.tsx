@@ -1,16 +1,9 @@
-/**
- * TRUTH-NET Embeddable Rating Badge
- * 
- * Lightweight iframe-friendly component that companies embed on their websites.
- * This is a VIRAL GROWTH mechanism — every badge links back to TRUTH-NET.
- * Think "SSL Certificate" badges or "BBB Accredited" seals.
- * 
- * Usage: <iframe src="https://truthnet.io/embed/badge/{agentId}" width="320" height="180" />
- */
-
+import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { Shield, Zap, ExternalLink } from 'lucide-react';
 import clsx from 'clsx';
+
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 const GRADES: Record<string, { color: string; bg: string; glow: string }> = {
   'AAA': { color: 'text-emerald-400', bg: 'from-emerald-500/20 to-emerald-500/5', glow: 'shadow-emerald-500/20' },
@@ -19,30 +12,66 @@ const GRADES: Record<string, { color: string; bg: string; glow: string }> = {
   'BBB': { color: 'text-amber-400', bg: 'from-amber-500/20 to-amber-500/5', glow: 'shadow-amber-500/20' },
   'BB': { color: 'text-orange-400', bg: 'from-orange-500/20 to-orange-500/5', glow: 'shadow-orange-500/20' },
   'B': { color: 'text-red-400', bg: 'from-red-500/20 to-red-500/5', glow: 'shadow-red-500/20' },
+  'NR': { color: 'text-gray-400', bg: 'from-gray-500/20 to-gray-500/5', glow: 'shadow-gray-500/20' },
 };
 
-// Mock — will be fetched from API  
-const mockBadgeData: Record<string, any> = {
-  'agent-001': {
-    name: 'TRUTH-NET Oracle',
-    provider: 'Anthropic',
-    grade: 'AAA',
-    truthScore: 92.4,
-    certified: true,
-    totalTrades: 2847,
-    brierScore: 0.08,
-  },
-};
+interface BadgeData {
+  name: string;
+  provider: string;
+  grade: string;
+  truthScore: number;
+  certified: boolean;
+  totalTrades: number;
+}
 
 export default function EmbedBadge() {
   const { agentId } = useParams();
-  const agent = mockBadgeData[agentId || ''] || mockBadgeData['agent-001'];
-  const gradeStyle = GRADES[agent.grade] || GRADES['A'];
+  const [agent, setAgent] = useState<BadgeData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!agentId) return;
+    async function load() {
+      try {
+        const res = await fetch(`${API_BASE}/v1/ratings/${agentId}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success) {
+            setAgent({
+              name: agentId,
+              provider: 'TRUTH-NET',
+              grade: data.data.grade,
+              truthScore: data.data.truth_score,
+              certified: data.data.certified,
+              totalTrades: data.data.performance?.total_trades || 0,
+            });
+          }
+        }
+      } catch {
+        setAgent({ name: agentId || 'Unknown', provider: 'TRUTH-NET', grade: 'NR', truthScore: 0, certified: false, totalTrades: 0 });
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+    const interval = setInterval(load, 60000);
+    return () => clearInterval(interval);
+  }, [agentId]);
+
+  if (loading || !agent) {
+    return (
+      <div className="min-h-screen bg-transparent flex items-center justify-center p-2">
+        <div className="w-[300px] h-[140px] bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl animate-pulse" />
+      </div>
+    );
+  }
+
+  const gradeStyle = GRADES[agent.grade] || GRADES['NR'];
 
   return (
     <div className="min-h-screen bg-transparent flex items-center justify-center p-2">
-      <a 
-        href={`${window.location.origin}/public/leaderboard`}
+      <a
+        href={`${window.location.origin}/public/agent/${agentId}`}
         target="_blank"
         rel="noopener noreferrer"
         className={clsx(
@@ -51,7 +80,6 @@ export default function EmbedBadge() {
           gradeStyle.glow
         )}
       >
-        {/* Top row: TRUTH-NET branding */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <div className="w-5 h-5 bg-gradient-to-br from-cyan-500 to-blue-600 rounded flex items-center justify-center">
@@ -66,35 +94,29 @@ export default function EmbedBadge() {
           )}
         </div>
 
-        {/* Agent + Grade */}
         <div className="flex items-center justify-between mb-3">
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-white truncate">{agent.name}</p>
             <p className="text-[10px] text-gray-500">{agent.provider}</p>
           </div>
-          <div className={clsx(
-            'text-3xl font-black font-mono ml-3',
-            gradeStyle.color
-          )}>
+          <div className={clsx('text-3xl font-black font-mono ml-3', gradeStyle.color)}>
             {agent.grade}
           </div>
         </div>
 
-        {/* Score bar */}
         <div className="mb-2">
           <div className="flex justify-between items-center mb-1">
             <span className="text-[10px] text-gray-500">TruthScore</span>
             <span className={clsx('text-xs font-mono font-bold', gradeStyle.color)}>{agent.truthScore.toFixed(1)}/100</span>
           </div>
           <div className="h-1.5 bg-[#111] rounded-full overflow-hidden">
-            <div 
+            <div
               className={clsx('h-full rounded-full bg-gradient-to-r', gradeStyle.bg)}
               style={{ width: `${agent.truthScore}%` }}
             />
           </div>
         </div>
 
-        {/* Footer stats */}
         <div className="flex items-center justify-between text-[9px] text-gray-600 pt-2 border-t border-[#111]">
           <span>{agent.totalTrades.toLocaleString()} verified predictions</span>
           <span className="flex items-center gap-0.5">

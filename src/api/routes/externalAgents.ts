@@ -29,6 +29,7 @@ interface ExternalAgent {
   model: string;
   apiKey: string;
   ownerId: string;
+  organization?: string;
   createdAt: Date;
   active: boolean;
 }
@@ -46,6 +47,10 @@ interface PredictionRecord {
   quantity: number;
   orderId?: string;
   createdAt: Date;
+  resolved?: boolean;
+  wasCorrect?: boolean;
+  pnlImpact?: number;
+  resolvedAt?: Date;
 }
 
 const externalAgents = new Map<string, ExternalAgent>();
@@ -58,6 +63,25 @@ export function createExternalAgentRoutes(
   eventBus: EventBus,
 ) {
   const ratingEngine = getRatingEngine(eventBus);
+
+  // Settlement feedback loop: when a market resolves, update prediction records
+  eventBus.subscribe('settlements.completed', (data: any) => {
+    if (!data.payouts) return;
+    const marketId = data.market_id;
+    for (const payout of data.payouts) {
+      const agentPreds = predictions.get(payout.agent_id);
+      if (agentPreds) {
+        for (const pred of agentPreds) {
+          if (pred.marketId === marketId && !pred.resolved) {
+            pred.resolved = true;
+            pred.wasCorrect = payout.won;
+            pred.pnlImpact = payout.profit_loss;
+            pred.resolvedAt = new Date();
+          }
+        }
+      }
+    }
+  });
 
   return async function externalAgentRoutes(fastify: FastifyInstance): Promise<void> {
 
@@ -77,7 +101,7 @@ export function createExternalAgentRoutes(
       }>,
       reply: FastifyReply
     ) => {
-      const { name, description, provider, model, owner_id } = request.body;
+      const { name, description, provider, model, owner_id, organization } = (request.body as any);
 
       if (!name || name.length < 2) {
         return reply.status(400).send({
@@ -97,6 +121,7 @@ export function createExternalAgentRoutes(
         model: model || 'unknown',
         apiKey,
         ownerId: owner_id || 'anonymous',
+        organization: organization || undefined,
         createdAt: new Date(),
         active: true,
       };
@@ -358,6 +383,7 @@ export function createExternalAgentRoutes(
         description: a.description,
         provider: a.provider,
         model: a.model,
+        organization: a.organization,
         active: a.active,
         registered_at: a.createdAt,
         predictions: (predictions.get(a.id) || []).length,
@@ -369,5 +395,53 @@ export function createExternalAgentRoutes(
         timestamp: new Date().toISOString(),
       });
     });
+
+    /**
+     * GET /v1/external-agents/:id/results
+     * Report card: resolved predictions with outcomes (the feedback loop)
+     */
+    fastify.get('/external-agents/:id/results', async (
+      request: FastifyRequest<{ Params: { id: string } }>,
+      reply: FastifyReply
+    ) => {
+      const agentPreds = predictions.get(request.params.id) || [];
+      const resolved = agentPreds.filter(p => p.resolved);
+      const correct = resolved.filter(p => p.wasCorrect);
+      const totalPnl = resolved.reduce((sum, p) => sum + (p.pnlImpact || 0), 0);
+
+      return reply.send({
+        success: true,
+        data: {
+          total_predictions: agentPreds.length,
+          resolved: resolved.length,
+          correct: correct.length,
+          accuracy: resolved.length > 0 ? Math.round((correct.length / resolved.length) * 1000) / 10 : 0,
+          total_pnl: Math.round(totalPnl * 100) / 100,
+          results: resolved.map(p => ({
+            prediction_id: p.id,
+            market_id: p.marketId,
+            probability: p.probability,
+            side: p.side,
+            was_correct: p.wasCorrect,
+            pnl_impact: p.pnlImpact,
+            predicted_at: p.createdAt,
+            resolved_at: p.resolvedAt,
+          })),
+        },
+        timestamp: new Date().toISOString(),
+      });
+    });
   };
+}
+
+// Export for name resolution in leaderboard
+export function getExternalAgentName(agentId: string): string | null {
+  const agent = externalAgents.get(agentId);
+  return agent ? agent.name : null;
+}
+
+export function getExternalAgentMeta(agentId: string): { name: string; model: string; provider: string; organization?: string } | null {
+  const agent = externalAgents.get(agentId);
+  if (!agent) return null;
+  return { name: agent.name, model: agent.model, provider: agent.provider, organization: agent.organization };
 }

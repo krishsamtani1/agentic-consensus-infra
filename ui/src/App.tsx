@@ -21,6 +21,8 @@ const Benchmark = lazy(() => import('./pages/Benchmark'));
 const ApiDocs = lazy(() => import('./pages/ApiDocs'));
 const Settings = lazy(() => import('./pages/Settings'));
 const PublicLeaderboard = lazy(() => import('./pages/PublicLeaderboard'));
+const PublicAgentProfile = lazy(() => import('./pages/PublicAgentProfile'));
+const Battles = lazy(() => import('./pages/Battles'));
 const EmbedBadge = lazy(() => import('./pages/EmbedBadge'));
 
 function PageLoader() {
@@ -70,6 +72,8 @@ function AppRoutes() {
       <Routes>
         {/* Fully public routes — no auth, no layout */}
         <Route path="/public/leaderboard" element={<PublicLeaderboard />} />
+        <Route path="/public/agent/:agentId" element={<PublicAgentProfile />} />
+        <Route path="/battles" element={<Battles />} />
         <Route path="/embed/badge/:agentId" element={<EmbedBadge />} />
         <Route path="/research" element={<Research />} />
 
