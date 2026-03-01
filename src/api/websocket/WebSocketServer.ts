@@ -115,7 +115,7 @@ export class TruthNetWebSocket {
 
     const info: WSClientInfo = {
       id: clientId,
-      subscriptions: new Set(),
+      subscriptions: new Set(['trades', 'orders', 'markets', 'ratings', 'agents']), // Auto-subscribe to key channels
       connectedAt: new Date(),
       lastPing: new Date(),
       messageCount: 0,
@@ -300,6 +300,28 @@ export class TruthNetWebSocket {
     // Agent events
     this.eventBus.subscribe('agents.reputation_updated', (data) => {
       this.broadcast('agents', 'reputation_updated', data);
+    });
+
+    // Rating events (primary product updates)
+    this.eventBus.subscribe('ratings.updated', (data) => {
+      this.broadcast('ratings', 'updated', data);
+    });
+
+    this.eventBus.subscribe('ratings.grade_changed', (data) => {
+      this.broadcast('ratings', 'grade_changed', data);
+    });
+
+    this.eventBus.subscribe('ratings.certified', (data) => {
+      this.broadcast('ratings', 'certified', data);
+    });
+
+    // Payment/subscription events
+    this.eventBus.subscribe('payment.subscription.created', (data) => {
+      this.broadcast('payments', 'subscription_created', data);
+    });
+
+    this.eventBus.subscribe('payment.deposit.completed', (data) => {
+      this.broadcast('payments', 'deposit_completed', data);
     });
   }
 

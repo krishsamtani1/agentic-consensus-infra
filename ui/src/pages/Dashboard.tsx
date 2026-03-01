@@ -1,9 +1,12 @@
 /**
  * TRUTH-NET Dashboard
- * Overview page: top-rated agents, active verification challenges, system health
+ * Connected to real backend APIs:
+ * - Ratings API for agent data
+ * - Markets API for challenges
+ * - WebSocket for live activity
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   TrendingUp, TrendingDown, Users, DollarSign, BarChart3,
@@ -19,44 +22,7 @@ import {
   PieChart as RPieChart, Pie, Cell
 } from 'recharts';
 import { useAuth } from '../hooks/useAuth';
-import { apiClient, Market } from '../api/client';
-
-// ============================================================================
-// MOCK DATA
-// ============================================================================
-
-const pnlData = Array.from({ length: 30 }, (_, i) => {
-  const pnl = (Math.random() - 0.4) * 2000 + (i * 50);
-  return { day: `Day ${i + 1}`, pnl, cumulative: 0 };
-});
-let cum = 0;
-pnlData.forEach(d => { cum += d.pnl; d.cumulative = cum; });
-
-const gradeDistribution = [
-  { name: 'AAA', value: 1, color: '#10b981' },
-  { name: 'AA', value: 2, color: '#06b6d4' },
-  { name: 'A', value: 2, color: '#3b82f6' },
-  { name: 'BBB', value: 3, color: '#f59e0b' },
-  { name: 'BB', value: 2, color: '#f97316' },
-  { name: 'B/CCC', value: 2, color: '#ef4444' },
-  { name: 'NR', value: 3, color: '#6b7280' },
-];
-
-const topRatedAgents = [
-  { name: 'TRUTH-NET Oracle', grade: 'AAA', brier: 0.08, accuracy: 92, predictions: 2847, domain: 'Multi', avatar: '⚡', certified: true },
-  { name: 'Tech Oracle', grade: 'AA', brier: 0.14, accuracy: 85, predictions: 567, domain: 'Tech', avatar: '💻', certified: true },
-  { name: 'Geopolitical Analyst', grade: 'AA', brier: 0.17, accuracy: 82, predictions: 892, domain: 'Geopolitics', avatar: '🌍', certified: true },
-  { name: 'Logistics Sentinel', grade: 'A', brier: 0.21, accuracy: 76, predictions: 1234, domain: 'Logistics', avatar: '🚢', certified: true },
-  { name: 'Weather Quant', grade: 'A', brier: 0.20, accuracy: 75, predictions: 342, domain: 'Climate', avatar: '🌡️', certified: false },
-];
-
-const recentVerifications = [
-  { id: '1', time: '3m ago', agent: 'Tech Oracle', action: 'Predicted YES', market: 'OpenAI Cerebras deployment ships to GA', result: 'pending', confidence: 82 },
-  { id: '2', time: '8m ago', agent: 'Geopolitical Analyst', action: 'Predicted NO', market: 'Poland-US vassal dispute escalates', result: 'pending', confidence: 71 },
-  { id: '3', time: '15m ago', agent: 'Logistics Sentinel', action: 'Predicted YES', market: 'FedEx InPost deal closes by Q2', result: 'pending', confidence: 88 },
-  { id: '4', time: '22m ago', agent: 'Weather Quant', action: 'Predicted NO', market: 'Atlantic storm reaches Cat 3+', result: 'correct', confidence: 91 },
-  { id: '5', time: '30m ago', agent: 'Market Maker Prime', action: 'Provided liquidity', market: 'Apple stock -5% post earnings', result: 'pending', confidence: 50 },
-];
+import { apiClient, ratingsAPI, Market } from '../api/client';
 
 // ============================================================================
 // GETTING STARTED
@@ -102,18 +68,43 @@ function GettingStarted() {
 }
 
 // ============================================================================
-// TOP RATED AGENTS
+// TOP RATED AGENTS (live from API)
 // ============================================================================
 
 function TopAgents() {
   const navigate = useNavigate();
 
+  const { data: ratingData } = useQuery({
+    queryKey: ['dashboard-ratings'],
+    queryFn: () => ratingsAPI.leaderboard(5, false),
+    staleTime: 15_000,
+    refetchInterval: 15_000,
+  });
+
+  const agents = ratingData?.leaderboard || [];
+
   const gradeColor = (grade: string) => {
-    if (grade.startsWith('A')) return 'text-emerald-400';
-    if (grade.startsWith('B')) return 'text-cyan-400';
-    if (grade.startsWith('C')) return 'text-amber-400';
-    if (grade === 'D') return 'text-orange-400';
+    if (grade === 'AAA') return 'text-emerald-400';
+    if (grade === 'AA') return 'text-cyan-400';
+    if (grade === 'A') return 'text-blue-400';
+    if (grade === 'BBB') return 'text-amber-400';
+    if (grade === 'BB') return 'text-orange-400';
     return 'text-red-400';
+  };
+
+  const avatarMap: Record<string, string> = {
+    'agent-oracle-001': '⚡', 'agent-tech-001': '💻', 'agent-geo-001': '🌍',
+    'agent-logistics-001': '🚢', 'agent-climate-001': '🌡️', 'agent-crypto-001': '₿',
+    'agent-mm-001': '📊', 'agent-macro-001': '📈', 'agent-sentiment-001': '🧠',
+    'agent-contrarian-001': '🔄',
+  };
+
+  const nameMap: Record<string, string> = {
+    'agent-oracle-001': 'TRUTH-NET Oracle', 'agent-tech-001': 'Tech Oracle',
+    'agent-geo-001': 'Geopolitical Analyst', 'agent-logistics-001': 'Logistics Sentinel',
+    'agent-climate-001': 'Climate Risk Monitor', 'agent-crypto-001': 'Crypto Alpha',
+    'agent-mm-001': 'Market Maker Prime', 'agent-macro-001': 'Macro Strategist',
+    'agent-sentiment-001': 'Sentiment Scanner', 'agent-contrarian-001': 'Contrarian Alpha',
   };
 
   return (
@@ -128,30 +119,160 @@ function TopAgents() {
         </Link>
       </div>
       <div className="divide-y divide-[#111]">
-        {topRatedAgents.map((agent, i) => (
+        {agents.length === 0 ? (
+          <div className="p-3 text-center text-gray-600 text-xs">
+            <Activity className="w-4 h-4 mx-auto mb-1 animate-pulse" />
+            Agents are trading... ratings will appear shortly
+          </div>
+        ) : agents.map((agent, i) => (
           <button
-            key={agent.name}
+            key={agent.agent_id}
             onClick={() => navigate('/leaderboard')}
             className="w-full p-2.5 hover:bg-white/[0.02] transition-colors flex items-center gap-3 text-left"
           >
             <span className="text-[10px] font-mono text-gray-700 w-4">#{i + 1}</span>
-            <span className="text-lg">{agent.avatar}</span>
+            <span className="text-lg">{avatarMap[agent.agent_id] || '🤖'}</span>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
-                <p className="text-xs text-white font-medium truncate">{agent.name}</p>
+                <p className="text-xs text-white font-medium truncate">
+                  {nameMap[agent.agent_id] || agent.agent_id}
+                </p>
                 {agent.certified && (
                   <ShieldCheck className="w-3 h-3 text-emerald-400 flex-shrink-0" />
                 )}
               </div>
-              <span className="text-[9px] text-gray-600">{agent.domain} · {agent.predictions} predictions</span>
+              <span className="text-[9px] text-gray-600">
+                {agent.total_trades} trades · Brier {agent.brier_score?.toFixed(2) || '—'}
+              </span>
             </div>
             <div className="text-right">
               <span className={clsx('text-sm font-bold font-mono', gradeColor(agent.grade))}>
                 {agent.grade}
               </span>
-              <p className="text-[9px] text-gray-600 font-mono">Brier {agent.brier.toFixed(2)}</p>
+              <p className="text-[9px] text-gray-600 font-mono">
+                {agent.truth_score?.toFixed(1) || '—'}
+              </p>
             </div>
           </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// LIVE ACTIVITY FEED (from WebSocket events)
+// ============================================================================
+
+interface ActivityItem {
+  id: string;
+  time: string;
+  agent: string;
+  action: string;
+  market: string;
+  detail: string;
+}
+
+function LiveActivityFeed() {
+  const [activities, setActivities] = useState<ActivityItem[]>([]);
+  const wsRef = useRef<WebSocket | null>(null);
+
+  const nameMap: Record<string, string> = {
+    'agent-oracle-001': 'TRUTH-NET Oracle', 'agent-tech-001': 'Tech Oracle',
+    'agent-geo-001': 'Geopolitical Analyst', 'agent-logistics-001': 'Logistics Sentinel',
+    'agent-climate-001': 'Climate Risk Monitor', 'agent-crypto-001': 'Crypto Alpha',
+    'agent-mm-001': 'Market Maker Prime', 'agent-macro-001': 'Macro Strategist',
+    'agent-sentiment-001': 'Sentiment Scanner', 'agent-contrarian-001': 'Contrarian Alpha',
+  };
+
+  useEffect(() => {
+    const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:3001';
+    let ws: WebSocket;
+    let closed = false;
+
+    function connect() {
+      ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = typeof event.data === 'string' ? JSON.parse(event.data) : null;
+          if (!msg) return;
+
+          if (msg.channel === 'trades' && msg.data) {
+            const trade = msg.data.trade || msg.data; // Unwrap trade from event payload
+            const agentName = nameMap[trade.buyer_id] || trade.buyer_id?.replace('agent-', '').replace(/-/g, ' ') || 'Agent';
+            setActivities(prev => [{
+              id: trade.id || Date.now().toString(),
+              time: 'just now',
+              agent: agentName,
+              action: `Bought ${(trade.outcome || 'YES').toUpperCase()}`,
+              market: trade.market_id?.substring(0, 8) || '',
+              detail: `${trade.quantity || 0} shares @ ${((trade.price || 0) * 100).toFixed(0)}¢`,
+            }, ...prev].slice(0, 30));
+          }
+        } catch {}
+      };
+
+      ws.onclose = () => {
+        if (!closed) setTimeout(connect, 3000);
+      };
+
+      ws.onerror = () => {};
+    }
+
+    connect();
+
+    return () => {
+      closed = true;
+      if (wsRef.current) wsRef.current.close();
+    };
+  }, []);
+
+  // Age the "just now" labels
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setActivities(prev => prev.map((a, i) => ({
+        ...a,
+        time: i === 0 ? 'just now' : i < 3 ? `${i * 5}s ago` : `${i * 10}s ago`,
+      })));
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg overflow-hidden">
+      <div className="p-3 border-b border-[#111] flex items-center gap-2">
+        <Activity className="w-3.5 h-3.5 text-cyan-400" />
+        <span className="text-sm font-medium text-white">Live Activity</span>
+        <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded-full ml-1">LIVE</span>
+        {activities.length > 0 && (
+          <span className="text-[10px] text-gray-600 ml-auto">{activities.length} events</span>
+        )}
+      </div>
+      <div className="divide-y divide-[#111] max-h-[320px] overflow-y-auto">
+        {activities.length === 0 ? (
+          <div className="p-4 text-center">
+            <Activity className="w-5 h-5 text-gray-700 mx-auto mb-2 animate-pulse" />
+            <p className="text-xs text-gray-600">Waiting for trades...</p>
+            <p className="text-[10px] text-gray-700 mt-1">Agents are warming up — activity will appear in seconds</p>
+          </div>
+        ) : activities.map(item => (
+          <div key={item.id} className="p-3 hover:bg-white/[0.01] transition-colors">
+            <div className="flex items-center justify-between">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className="text-xs font-medium text-white">{item.agent}</span>
+                  <span className={clsx('text-[10px] px-1.5 py-0.5 rounded font-medium',
+                    item.action.includes('YES') ? 'bg-emerald-500/20 text-emerald-400' :
+                    'bg-red-500/20 text-red-400'
+                  )}>{item.action}</span>
+                </div>
+                <p className="text-[10px] text-gray-600">{item.detail}</p>
+              </div>
+              <span className="text-[10px] text-gray-600 ml-4">{item.time}</span>
+            </div>
+          </div>
         ))}
       </div>
     </div>
@@ -166,8 +287,8 @@ function TrendingMarkets() {
   const { data } = useQuery({
     queryKey: ['top-markets'],
     queryFn: () => apiClient.get<{ markets: Market[]; total: number }>('/markets?limit=100'),
-    staleTime: 30_000,
-    refetchInterval: 30_000,
+    staleTime: 15_000,
+    refetchInterval: 15_000,
   });
 
   const top = (data?.markets || [])
@@ -190,9 +311,9 @@ function TrendingMarkets() {
           <div className="p-3 text-center text-gray-600 text-xs">Loading challenges...</div>
         ) : top.map((m, i) => {
           const vol = (m.volume_yes || 0) + (m.volume_no || 0);
-          const yp = vol > 0 ? (m.volume_yes || 0) / vol : (m.last_price_yes ?? 0.5);
+          const yp = m.last_price_yes ?? 0.5;
           return (
-            <div key={m.id} className="p-2.5 hover:bg-white/[0.02] transition-colors">
+            <Link key={m.id} to="/markets" className="block p-2.5 hover:bg-white/[0.02] transition-colors">
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-mono text-gray-700 w-4">#{i + 1}</span>
                 <div className="flex-1 min-w-0">
@@ -203,10 +324,10 @@ function TrendingMarkets() {
                   <span className={clsx('text-xs font-mono font-bold', yp > 0.5 ? 'text-emerald-400' : 'text-red-400')}>
                     {(yp * 100).toFixed(0)}¢
                   </span>
-                  <p className="text-[9px] text-gray-600 font-mono">${(vol / 1000).toFixed(0)}K vol</p>
+                  <p className="text-[9px] text-gray-600 font-mono">${vol.toFixed(0)} vol</p>
                 </div>
               </div>
-            </div>
+            </Link>
           );
         })}
       </div>
@@ -245,19 +366,57 @@ function StatCard({ title, value, trend, icon: Icon }: {
 // ============================================================================
 
 export default function Dashboard() {
-  const { data: statsData } = useQuery({
-    queryKey: ['dashboard-stats'],
-    queryFn: async () => {
-      const response = await apiClient.get<{ markets: Market[]; total: number }>('/markets?limit=100');
-      const markets = response?.markets || [];
-      const totalVolume = markets.reduce((a, m) => a + (m.volume_yes || 0) + (m.volume_no || 0), 0);
-      return { totalVolume, activeMarkets: markets.length, totalAgents: 20, certifiedAgents: 3, avgBrier: 0.22 };
-    },
-    staleTime: 30_000,
-    refetchInterval: 30_000,
+  // Fetch real leaderboard for stats
+  const { data: ratingData } = useQuery({
+    queryKey: ['dashboard-full-ratings'],
+    queryFn: () => ratingsAPI.leaderboard(50, true),
+    staleTime: 15_000,
+    refetchInterval: 15_000,
   });
 
-  const stats = statsData || { totalVolume: 0, activeMarkets: 0, totalAgents: 20, certifiedAgents: 3, avgBrier: 0.22 };
+  // Fetch real markets
+  const { data: marketData } = useQuery({
+    queryKey: ['dashboard-markets'],
+    queryFn: () => apiClient.get<{ markets: Market[]; total: number }>('/markets?limit=100'),
+    staleTime: 15_000,
+    refetchInterval: 15_000,
+  });
+
+  // Compute real stats
+  const stats = useMemo(() => {
+    const agents = ratingData?.leaderboard || [];
+    const distribution = ratingData?.distribution || {};
+    const markets = marketData?.markets || [];
+    const totalVolume = markets.reduce((a, m) => a + (m.volume_yes || 0) + (m.volume_no || 0), 0);
+    const totalAgents = agents.length;
+    const certifiedAgents = agents.filter(a => a.certified).length;
+    const avgBrier = totalAgents > 0
+      ? agents.reduce((a, ag) => a + (ag.brier_score || 0), 0) / totalAgents
+      : 0;
+
+    return {
+      totalVolume,
+      activeMarkets: markets.filter(m => m.status === 'active' || m.status === 'open').length,
+      totalAgents,
+      certifiedAgents,
+      avgBrier,
+      distribution,
+    };
+  }, [ratingData, marketData]);
+
+  // Grade distribution for pie chart
+  const gradeDistribution = useMemo(() => {
+    const dist = stats.distribution as Record<string, number>;
+    return [
+      { name: 'AAA', value: dist['AAA'] || 0, color: '#10b981' },
+      { name: 'AA', value: dist['AA'] || 0, color: '#06b6d4' },
+      { name: 'A', value: dist['A'] || 0, color: '#3b82f6' },
+      { name: 'BBB', value: dist['BBB'] || 0, color: '#f59e0b' },
+      { name: 'BB', value: dist['BB'] || 0, color: '#f97316' },
+      { name: 'B/CCC', value: (dist['B'] || 0) + (dist['CCC'] || 0), color: '#ef4444' },
+      { name: 'NR', value: dist['NR'] || 0, color: '#6b7280' },
+    ].filter(d => d.value > 0);
+  }, [stats.distribution]);
 
   return (
     <div className="p-6">
@@ -267,111 +426,61 @@ export default function Dashboard() {
       <div className="flex items-center justify-between mb-5">
         <div>
           <h1 className="text-xl font-bold text-white">Dashboard</h1>
-          <p className="text-gray-600 text-sm">AI agent performance overview and verification activity</p>
+          <p className="text-gray-600 text-sm">AI agent performance overview and live verification activity</p>
         </div>
-        <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded-full font-mono">LIVE</span>
+        <div className="flex items-center gap-3">
+          <Link to="/benchmark"
+            className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-cyan-600/20 to-blue-600/20 border border-cyan-500/30 text-cyan-400 text-xs font-medium rounded-lg hover:border-cyan-500/50 transition-colors">
+            <Target className="w-3 h-3" /> Benchmark Agent
+          </Link>
+          <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded-full font-mono">LIVE</span>
+        </div>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-5 gap-3 mb-5">
-        <StatCard title="Rated Agents" value={stats.totalAgents} trend={8.3} icon={Bot} />
-        <StatCard title="Certified" value={stats.certifiedAgents} trend={50.0} icon={ShieldCheck} />
-        <StatCard title="Active Challenges" value={stats.activeMarkets} trend={12.5} icon={Target} />
-        <StatCard title="Network Volume" value={`$${(stats.totalVolume / 1000).toFixed(1)}K`} trend={15.2} icon={BarChart3} />
-        <StatCard title="Avg Brier Score" value={stats.avgBrier.toFixed(2)} trend={-5.1} icon={Award} />
+        <StatCard title="Rated Agents" value={stats.totalAgents} icon={Bot} />
+        <StatCard title="Certified" value={stats.certifiedAgents} icon={ShieldCheck} />
+        <StatCard title="Active Challenges" value={stats.activeMarkets} icon={Target} />
+        <StatCard title="Network Volume" value={`$${stats.totalVolume.toFixed(0)}`} icon={BarChart3} />
+        <StatCard title="Avg Brier Score" value={stats.avgBrier > 0 ? stats.avgBrier.toFixed(3) : '—'} icon={Award} />
       </div>
 
       {/* Main Grid */}
       <div className="grid grid-cols-12 gap-4">
         {/* Left Column */}
         <div className="col-span-8 space-y-4">
-          {/* Verification Activity Feed */}
-          <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg overflow-hidden">
-            <div className="p-3 border-b border-[#111] flex items-center gap-2">
-              <Activity className="w-3.5 h-3.5 text-cyan-400" />
-              <span className="text-sm font-medium text-white">Verification Activity</span>
-              <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded-full ml-1">LIVE</span>
-            </div>
-            <div className="divide-y divide-[#111]">
-              {recentVerifications.map(item => (
-                <div key={item.id} className="p-3 hover:bg-white/[0.01] transition-colors">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <span className="text-xs font-medium text-white">{item.agent}</span>
-                        <span className={clsx('text-[10px] px-1.5 py-0.5 rounded font-medium',
-                          item.action.includes('YES') ? 'bg-emerald-500/20 text-emerald-400' :
-                          item.action.includes('NO') ? 'bg-red-500/20 text-red-400' :
-                          'bg-blue-500/20 text-blue-400'
-                        )}>{item.action}</span>
-                        {item.result === 'correct' && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-emerald-500/30 text-emerald-300">CORRECT</span>
-                        )}
-                      </div>
-                      <p className="text-xs text-gray-500 truncate">{item.market}</p>
-                    </div>
-                    <div className="text-right ml-4">
-                      <span className="text-xs font-mono text-white">{item.confidence}% conf</span>
-                      <p className="text-[10px] text-gray-600">{item.time}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Network Performance Chart */}
-          <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg p-4">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-medium text-white">Network P&L (30d)</span>
-              <span className={clsx('text-sm font-mono font-bold', cum >= 0 ? 'text-emerald-400' : 'text-red-400')}>
-                {cum >= 0 ? '+' : ''}${cum.toFixed(0)}
-              </span>
-            </div>
-            <div className="h-40">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={pnlData}>
-                  <defs>
-                    <linearGradient id="pnlGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="day" stroke="#333" fontSize={9} tickLine={false} axisLine={false} interval={4} />
-                  <YAxis stroke="#333" fontSize={9} tickLine={false} axisLine={false} tickFormatter={v => `$${(v / 1000).toFixed(1)}K`} />
-                  <Tooltip contentStyle={{ backgroundColor: '#0a0a0a', border: '1px solid #1a1a1a', borderRadius: '8px', fontSize: '11px' }} />
-                  <Area type="monotone" dataKey="cumulative" stroke="#10b981" strokeWidth={2} fill="url(#pnlGrad)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
+          {/* Live Activity Feed (from WebSocket) */}
+          <LiveActivityFeed />
 
           {/* Grade Distribution */}
-          <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg p-4">
-            <span className="text-sm font-medium text-white">Agent Grade Distribution</span>
-            <div className="flex items-center gap-6 mt-3">
-              <div className="h-32 w-32 flex-shrink-0">
-                <ResponsiveContainer width="100%" height="100%">
-                  <RPieChart>
-                    <Pie data={gradeDistribution} cx="50%" cy="50%" innerRadius={30} outerRadius={50}
-                      paddingAngle={3} dataKey="value" strokeWidth={0}>
-                      {gradeDistribution.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-                    </Pie>
-                    <Tooltip contentStyle={{ backgroundColor: '#0a0a0a', border: '1px solid #1a1a1a', borderRadius: '8px', fontSize: '11px' }} />
-                  </RPieChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="grid grid-cols-3 gap-x-6 gap-y-1.5 flex-1">
-                {gradeDistribution.map(d => (
-                  <div key={d.name} className="flex items-center gap-2">
-                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: d.color }} />
-                    <span className="text-xs text-gray-400">{d.name}</span>
-                    <span className="text-xs font-mono text-white ml-auto">{d.value}</span>
-                  </div>
-                ))}
+          {gradeDistribution.length > 0 && (
+            <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg p-4">
+              <span className="text-sm font-medium text-white">Agent Grade Distribution</span>
+              <div className="flex items-center gap-6 mt-3">
+                <div className="h-32 w-32 flex-shrink-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RPieChart>
+                      <Pie data={gradeDistribution} cx="50%" cy="50%" innerRadius={30} outerRadius={50}
+                        paddingAngle={3} dataKey="value" strokeWidth={0}>
+                        {gradeDistribution.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                      </Pie>
+                      <Tooltip contentStyle={{ backgroundColor: '#0a0a0a', border: '1px solid #1a1a1a', borderRadius: '8px', fontSize: '11px' }} />
+                    </RPieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="grid grid-cols-3 gap-x-6 gap-y-1.5 flex-1">
+                  {gradeDistribution.map(d => (
+                    <div key={d.name} className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: d.color }} />
+                      <span className="text-xs text-gray-400">{d.name}</span>
+                      <span className="text-xs font-mono text-white ml-auto">{d.value}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Right Column */}
@@ -387,9 +496,9 @@ export default function Dashboard() {
             </div>
             <div className="space-y-2">
               {[
-                { label: 'Throughput', value: '42 tx/s' },
-                { label: 'Latency (p99)', value: '2.3ms' },
-                { label: 'Active Oracles', value: '29 feeds' },
+                { label: 'Rating Engine', value: 'Online' },
+                { label: 'Settlement Service', value: 'Online' },
+                { label: 'Trading Loop', value: 'Active' },
                 { label: 'Circuit Breakers', value: 'OK' },
               ].map(item => (
                 <div key={item.label} className="flex justify-between items-center">
@@ -397,6 +506,29 @@ export default function Dashboard() {
                   <span className="text-xs font-mono text-emerald-400">{item.value}</span>
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/* Quick Actions */}
+          <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg p-4">
+            <span className="text-sm font-medium text-white mb-3 block">Quick Actions</span>
+            <div className="space-y-2">
+              <Link to="/agents" className="flex items-center gap-2 px-3 py-2 rounded-lg bg-black/50 hover:bg-white/[0.03] transition-colors text-sm text-gray-400 hover:text-white">
+                <Bot className="w-3.5 h-3.5 text-cyan-400" /> Register Agent
+                <ArrowRight className="w-3 h-3 ml-auto" />
+              </Link>
+              <Link to="/benchmark" className="flex items-center gap-2 px-3 py-2 rounded-lg bg-black/50 hover:bg-white/[0.03] transition-colors text-sm text-gray-400 hover:text-white">
+                <Target className="w-3.5 h-3.5 text-purple-400" /> Run Benchmark
+                <ArrowRight className="w-3 h-3 ml-auto" />
+              </Link>
+              <Link to="/compare" className="flex items-center gap-2 px-3 py-2 rounded-lg bg-black/50 hover:bg-white/[0.03] transition-colors text-sm text-gray-400 hover:text-white">
+                <Star className="w-3.5 h-3.5 text-amber-400" /> Compare Agents
+                <ArrowRight className="w-3 h-3 ml-auto" />
+              </Link>
+              <Link to="/marketplace" className="flex items-center gap-2 px-3 py-2 rounded-lg bg-black/50 hover:bg-white/[0.03] transition-colors text-sm text-gray-400 hover:text-white">
+                <ExternalLink className="w-3.5 h-3.5 text-emerald-400" /> Marketplace
+                <ArrowRight className="w-3 h-3 ml-auto" />
+              </Link>
             </div>
           </div>
         </div>

@@ -1,5 +1,5 @@
 # TRUTH-NET Docker Compose
-# Development and local testing environment
+# AI Agent Rating Agency - Development and local testing environment
 
 version: '3.8'
 

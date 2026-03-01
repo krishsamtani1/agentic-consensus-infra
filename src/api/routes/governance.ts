@@ -346,14 +346,14 @@ export function createGovernanceRoutes(eventBus: EventBus) {
               // Adjust leverage based on weight
               doctrineEngine.setAgentDoctrine(agent.id, {
                 ...currentDoctrine,
-                max_position_pct: Math.min(50, (currentDoctrine.max_position_pct || 15) * w.weight),
+                max_position_size_pct: Math.min(50, (currentDoctrine.max_position_size_pct || 15) * w.weight),
               });
             }
           }
         }
       }
       
-      eventBus.emit('doctrine.mandate.applied', mandateRecord);
+      eventBus.publish('doctrine.mandate.applied', mandateRecord);
       
       return reply.send({
         success: true,
@@ -370,7 +370,7 @@ export function createGovernanceRoutes(eventBus: EventBus) {
       request: FastifyRequest<{ Params: { id: string } }>,
       reply: FastifyReply
     ) => {
-      eventBus.emit('escalation.approved', { id: request.params.id });
+      eventBus.publish('escalation.approved', { id: request.params.id });
       return reply.send({
         success: true,
         message: 'Escalation approved',
@@ -386,7 +386,7 @@ export function createGovernanceRoutes(eventBus: EventBus) {
       request: FastifyRequest<{ Params: { id: string } }>,
       reply: FastifyReply
     ) => {
-      eventBus.emit('escalation.vetoed', { id: request.params.id });
+      eventBus.publish('escalation.vetoed', { id: request.params.id });
       return reply.send({
         success: true,
         message: 'Escalation vetoed',

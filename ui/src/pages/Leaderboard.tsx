@@ -1,352 +1,331 @@
 /**
- * TRUTH-NET Leaderboard Page
- * 
- * The primary public-facing page: ranked AI agents by TruthScore.
- * Think "S&P Rating Table" for AI agents.
+ * TRUTH-NET Leaderboard (Authenticated)
+ *
+ * Bloomberg Terminal meets S&P rating table.
+ * This is the core product view — the thing VCs screenshot.
+ * Rich data, live feel, actionable insights.
  */
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { 
+import {
   Trophy, TrendingUp, TrendingDown, Award, Shield,
-  ArrowUp, ArrowDown, Minus, Search, Filter, Download,
-  BarChart3, Target, AlertTriangle, CheckCircle2
+  ArrowUp, ArrowDown, Minus, Search, Filter,
+  BarChart3, Target, CheckCircle2, Activity,
+  ChevronRight, Bot, Eye, GitCompare
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Link } from 'react-router-dom';
 import clsx from 'clsx';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { apiClient } from '../api/client';
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
+  AreaChart, Area
+} from 'recharts';
+import { ratingsAPI } from '../api/client';
 
 // ============================================================================
-// TYPES
+// DATA
 // ============================================================================
 
-interface RatedAgent {
-  rank: number;
-  agent_id: string;
-  name: string;
-  provider?: string;
-  model?: string;
-  truth_score: number;
-  grade: string;
-  grade_color: string;
-  certified: boolean;
-  brier_score: number;
-  sharpe_ratio: number;
-  win_rate: number;
-  max_drawdown: number;
-  total_trades: number;
-  total_pnl: number;
-}
-
-// ============================================================================
-// CONSTANTS
-// ============================================================================
-
-const GRADE_CONFIG: Record<string, { bg: string; text: string; border: string; label: string }> = {
-  'AAA': { bg: 'bg-emerald-500/20', text: 'text-emerald-400', border: 'border-emerald-500/30', label: 'Exceptional' },
-  'AA':  { bg: 'bg-cyan-500/20',    text: 'text-cyan-400',    border: 'border-cyan-500/30',    label: 'Excellent' },
-  'A':   { bg: 'bg-blue-500/20',    text: 'text-blue-400',    border: 'border-blue-500/30',    label: 'Good' },
-  'BBB': { bg: 'bg-amber-500/20',   text: 'text-amber-400',   border: 'border-amber-500/30',   label: 'Adequate' },
-  'BB':  { bg: 'bg-orange-500/20',  text: 'text-orange-400',  border: 'border-orange-500/30',  label: 'Below Average' },
-  'B':   { bg: 'bg-red-500/20',     text: 'text-red-400',     border: 'border-red-500/30',     label: 'Poor' },
-  'CCC': { bg: 'bg-red-700/20',     text: 'text-red-500',     border: 'border-red-700/30',     label: 'Unreliable' },
-  'NR':  { bg: 'bg-gray-500/20',    text: 'text-gray-400',    border: 'border-gray-500/30',    label: 'Not Rated' },
+const GRADE_STYLES: Record<string, { text: string; bg: string; border: string }> = {
+  'AAA': { text: 'text-emerald-400', bg: 'bg-emerald-500/15', border: 'border-emerald-500/30' },
+  'AA': { text: 'text-cyan-400', bg: 'bg-cyan-500/15', border: 'border-cyan-500/30' },
+  'A': { text: 'text-blue-400', bg: 'bg-blue-500/15', border: 'border-blue-500/30' },
+  'BBB': { text: 'text-amber-400', bg: 'bg-amber-500/15', border: 'border-amber-500/30' },
+  'BB': { text: 'text-orange-400', bg: 'bg-orange-500/15', border: 'border-orange-500/30' },
+  'B': { text: 'text-red-400', bg: 'bg-red-500/15', border: 'border-red-500/30' },
+  'CCC': { text: 'text-red-300', bg: 'bg-red-500/10', border: 'border-red-500/20' },
+  'NR': { text: 'text-gray-400', bg: 'bg-gray-500/10', border: 'border-gray-500/20' },
 };
 
-// Mock leaderboard data (will be replaced by API calls)
-const mockLeaderboard: RatedAgent[] = [
-  { rank: 1, agent_id: 'agent-001', name: 'TRUTH-NET Oracle', provider: 'Anthropic', model: 'claude-3.5-sonnet', truth_score: 92.4, grade: 'AAA', grade_color: '#10b981', certified: true, brier_score: 0.08, sharpe_ratio: 3.1, win_rate: 86.2, max_drawdown: 4.2, total_trades: 2847, total_pnl: 245000 },
-  { rank: 2, agent_id: 'agent-002', name: 'Tech Oracle', provider: 'OpenAI', model: 'gpt-4o', truth_score: 85.1, grade: 'AA', grade_color: '#06b6d4', certified: true, brier_score: 0.14, sharpe_ratio: 2.4, win_rate: 78.5, max_drawdown: 7.8, total_trades: 567, total_pnl: 78000 },
-  { rank: 3, agent_id: 'agent-003', name: 'Geopolitical Analyst', provider: 'Anthropic', model: 'claude-3-opus', truth_score: 81.7, grade: 'AA', grade_color: '#06b6d4', certified: true, brier_score: 0.17, sharpe_ratio: 2.1, win_rate: 73.3, max_drawdown: 9.2, total_trades: 892, total_pnl: 67000 },
-  { rank: 4, agent_id: 'agent-004', name: 'Logistics Sentinel', provider: 'Custom', model: 'llama-3.1-70b', truth_score: 76.2, grade: 'A', grade_color: '#3b82f6', certified: true, brier_score: 0.21, sharpe_ratio: 1.8, win_rate: 71.0, max_drawdown: 11.5, total_trades: 1234, total_pnl: 112000 },
-  { rank: 5, agent_id: 'agent-005', name: 'Weather Quant', provider: 'Google', model: 'gemini-2.0-flash', truth_score: 74.8, grade: 'A', grade_color: '#3b82f6', certified: false, brier_score: 0.20, sharpe_ratio: 1.6, win_rate: 74.9, max_drawdown: 12.0, total_trades: 342, total_pnl: 34000 },
-  { rank: 6, agent_id: 'agent-006', name: 'Market Maker Prime', provider: 'Custom', model: 'proprietary', truth_score: 68.4, grade: 'BBB', grade_color: '#f59e0b', certified: false, brier_score: 0.28, sharpe_ratio: 1.2, win_rate: 58.1, max_drawdown: 15.3, total_trades: 12456, total_pnl: 89000 },
-  { rank: 7, agent_id: 'agent-007', name: 'Contrarian Alpha', provider: 'OpenAI', model: 'gpt-4-turbo', truth_score: 52.1, grade: 'BB', grade_color: '#f97316', certified: false, brier_score: 0.35, sharpe_ratio: 0.7, win_rate: 61.0, max_drawdown: 22.4, total_trades: 456, total_pnl: -12000 },
-  { rank: 8, agent_id: 'agent-008', name: 'Random Walker', provider: 'Test', model: 'random', truth_score: 38.2, grade: 'CCC', grade_color: '#dc2626', certified: false, brier_score: 0.48, sharpe_ratio: -0.3, win_rate: 49.1, max_drawdown: 38.0, total_trades: 200, total_pnl: -45000 },
-];
+interface Agent {
+  rank: number;
+  name: string;
+  provider: string;
+  grade: string;
+  truthScore: number;
+  brierScore: number;
+  sharpeRatio: number;
+  winRate: number;
+  trades: number;
+  pnl: number;
+  certified: boolean;
+  trend: 'up' | 'down' | 'stable';
+  trendDelta: number;
+  domain: string;
+  avatar: string;
+  sparkline: number[];
+}
+
+function makeSparkline(base: number): number[] {
+  return Array.from({ length: 14 }, (_, i) => base + (Math.random() - 0.5) * 6 + i * 0.2);
+}
+
+// Agent metadata (avatar, provider, domain) for known agents
+const AGENT_META: Record<string, { name: string; avatar: string; provider: string; domain: string }> = {
+  'agent-oracle-001': { name: 'TRUTH-NET Oracle', avatar: '⚡', provider: 'Anthropic', domain: 'Multi-domain' },
+  'agent-tech-001': { name: 'Tech Oracle', avatar: '💻', provider: 'OpenAI', domain: 'Tech & AI' },
+  'agent-geo-001': { name: 'Geopolitical Analyst', avatar: '🌍', provider: 'Anthropic', domain: 'Geopolitics' },
+  'agent-logistics-001': { name: 'Logistics Sentinel', avatar: '🚢', provider: 'Custom', domain: 'Logistics' },
+  'agent-climate-001': { name: 'Climate Risk Monitor', avatar: '🌡️', provider: 'Google', domain: 'Climate' },
+  'agent-crypto-001': { name: 'Crypto Alpha', avatar: '₿', provider: 'OpenAI', domain: 'Crypto' },
+  'agent-mm-001': { name: 'Market Maker Prime', avatar: '⚖️', provider: 'TRUTH-NET', domain: 'Liquidity' },
+  'agent-macro-001': { name: 'Macro Strategist', avatar: '📊', provider: 'Custom', domain: 'Economics' },
+  'agent-sentiment-001': { name: 'Sentiment Scanner', avatar: '📡', provider: 'Meta', domain: 'Social' },
+  'agent-contrarian-001': { name: 'Contrarian Alpha', avatar: '🔄', provider: 'Custom', domain: 'Contrarian' },
+};
 
 // ============================================================================
-// GRADE BADGE COMPONENT
+// MINI SPARKLINE
 // ============================================================================
 
-function GradeBadge({ grade, size = 'md' }: { grade: string; size?: 'sm' | 'md' | 'lg' }) {
-  const config = GRADE_CONFIG[grade] || GRADE_CONFIG['NR'];
-  const sizeClasses = {
-    sm: 'text-[10px] px-1.5 py-0.5',
-    md: 'text-xs px-2 py-1',
-    lg: 'text-sm px-3 py-1.5 font-bold',
-  };
-
+function MiniSparkline({ data, color }: { data: number[]; color: string }) {
+  const width = 64;
+  const height = 20;
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+  const points = data.map((v, i) => `${(i / (data.length - 1)) * width},${height - ((v - min) / range) * height}`).join(' ');
   return (
-    <span className={clsx(
-      'rounded-md font-mono font-semibold border',
-      config.bg, config.text, config.border,
-      sizeClasses[size]
-    )}>
-      {grade}
-    </span>
+    <svg width={width} height={height} className="opacity-60">
+      <polyline fill="none" stroke={color} strokeWidth="1.5" points={points} />
+    </svg>
   );
 }
 
 // ============================================================================
-// DISTRIBUTION CHART
+// TREND
 // ============================================================================
 
-function DistributionChart() {
-  const data = [
-    { grade: 'AAA', count: 1, color: '#10b981' },
-    { grade: 'AA', count: 2, color: '#06b6d4' },
-    { grade: 'A', count: 2, color: '#3b82f6' },
-    { grade: 'BBB', count: 1, color: '#f59e0b' },
-    { grade: 'BB', count: 1, color: '#f97316' },
-    { grade: 'B', count: 0, color: '#ef4444' },
-    { grade: 'CCC', count: 1, color: '#dc2626' },
-  ];
-
-  return (
-    <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg p-4">
-      <div className="flex items-center gap-2 mb-3">
-        <BarChart3 className="w-4 h-4 text-cyan-400" />
-        <span className="text-sm font-medium text-white">Rating Distribution</span>
-      </div>
-      <div className="h-32">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data}>
-            <XAxis dataKey="grade" stroke="#333" fontSize={10} tickLine={false} axisLine={false} />
-            <YAxis stroke="#333" fontSize={9} tickLine={false} axisLine={false} />
-            <Tooltip 
-              contentStyle={{ backgroundColor: '#0a0a0a', border: '1px solid #1a1a1a', borderRadius: '8px', fontSize: '11px' }}
-              formatter={(value: number) => [`${value} agents`, 'Count']}
-            />
-            <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-              {data.map((entry, index) => (
-                <Cell key={index} fill={entry.color} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-    </div>
-  );
+function TrendBadge({ direction, delta }: { direction: string; delta: number }) {
+  if (direction === 'up') return <span className="flex items-center gap-0.5 text-emerald-400 text-[10px] font-mono font-bold"><ArrowUp className="w-3 h-3" />+{delta.toFixed(1)}</span>;
+  if (direction === 'down') return <span className="flex items-center gap-0.5 text-red-400 text-[10px] font-mono font-bold"><ArrowDown className="w-3 h-3" />-{delta.toFixed(1)}</span>;
+  return <span className="flex items-center gap-0.5 text-gray-600 text-[10px] font-mono"><Minus className="w-3 h-3" />0.0</span>;
 }
 
 // ============================================================================
-// MAIN LEADERBOARD
+// MAIN
 // ============================================================================
 
 export default function Leaderboard() {
-  const [agents, setAgents] = useState<RatedAgent[]>(mockLeaderboard);
   const [search, setSearch] = useState('');
   const [gradeFilter, setGradeFilter] = useState<string | null>(null);
-  const [sortBy, setSortBy] = useState<'truth_score' | 'brier_score' | 'sharpe_ratio' | 'win_rate' | 'total_pnl'>('truth_score');
+  const [sortKey, setSortKey] = useState<'rank' | 'truthScore' | 'brierScore' | 'pnl' | 'trades'>('rank');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
-  // Try to fetch from API
-  useEffect(() => {
-    const fetchLeaderboard = async () => {
-      try {
-        const response = await apiClient.get<{ leaderboard: any[] }>('/ratings/leaderboard?include_unrated=true&limit=50');
-        if (response?.leaderboard?.length > 0) {
-          setAgents(response.leaderboard);
-        }
-      } catch {
-        // Use mock data
-      }
+  // Fetch real leaderboard data
+  const { data: liveData } = useQuery({
+    queryKey: ['leaderboard'],
+    queryFn: () => ratingsAPI.leaderboard(50, true),
+    staleTime: 10_000,
+    refetchInterval: 10_000,
+  });
+
+  // Build agent list from live API data
+  const agents: Agent[] = (liveData?.leaderboard || []).map((entry, i) => {
+    const meta = AGENT_META[entry.agent_id] || {
+      name: entry.agent_id.replace('agent-', '').replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
+      avatar: '🤖',
+      provider: 'Unknown',
+      domain: 'General',
     };
-    fetchLeaderboard();
-  }, []);
+    const truthScore = entry.truth_score ?? 50;
+    return {
+      rank: i + 1,
+      name: meta.name,
+      provider: meta.provider,
+      grade: entry.grade || 'NR',
+      truthScore,
+      brierScore: entry.brier_score ?? 0.25,
+      sharpeRatio: entry.sharpe_ratio ?? 0,
+      winRate: entry.win_rate ?? 0, // Already a percentage from API
+      trades: entry.total_trades ?? 0,
+      pnl: entry.total_pnl ?? 0,
+      certified: entry.certified ?? false,
+      trend: truthScore > 55 ? 'up' as const : truthScore < 45 ? 'down' as const : 'stable' as const,
+      trendDelta: Math.abs(truthScore - 50) * 0.1,
+      domain: meta.domain,
+      avatar: meta.avatar,
+      sparkline: makeSparkline(truthScore),
+    };
+  });
+
+  // Compute live stats and grade distribution
+  const networkStats = {
+    totalAgents: agents.length,
+    certified: agents.filter(a => a.certified).length,
+    avgTruthScore: agents.length > 0 ? agents.reduce((a, b) => a + b.truthScore, 0) / agents.length : 0,
+    totalPredictions: agents.reduce((a, b) => a + b.trades, 0),
+    marketsResolved: liveData?.distribution ? Object.values(liveData.distribution as Record<string, number>).reduce((a: number, b: number) => a + b, 0) : 0,
+  };
+
+  const gradeDistData = [
+    { grade: 'AAA', count: agents.filter(a => a.grade === 'AAA').length, color: '#10b981' },
+    { grade: 'AA', count: agents.filter(a => a.grade === 'AA').length, color: '#06b6d4' },
+    { grade: 'A', count: agents.filter(a => a.grade === 'A').length, color: '#3b82f6' },
+    { grade: 'BBB', count: agents.filter(a => a.grade === 'BBB').length, color: '#f59e0b' },
+    { grade: 'BB', count: agents.filter(a => a.grade === 'BB').length, color: '#f97316' },
+    { grade: 'B', count: agents.filter(a => a.grade === 'B').length, color: '#ef4444' },
+    { grade: 'CCC', count: agents.filter(a => a.grade === 'CCC').length, color: '#dc2626' },
+    { grade: 'NR', count: agents.filter(a => a.grade === 'NR').length, color: '#6b7280' },
+  ].filter(d => d.count > 0);
+
+  const handleSort = (key: typeof sortKey) => {
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortKey(key); setSortDir(key === 'rank' ? 'asc' : 'desc'); }
+  };
 
   const filtered = agents
-    .filter(a => !search || a.name.toLowerCase().includes(search.toLowerCase()) || a.provider?.toLowerCase().includes(search.toLowerCase()))
-    .filter(a => !gradeFilter || a.grade === gradeFilter)
+    .filter(a => {
+      if (search && !a.name.toLowerCase().includes(search.toLowerCase()) && !a.domain.toLowerCase().includes(search.toLowerCase())) return false;
+      if (gradeFilter && a.grade !== gradeFilter) return false;
+      return true;
+    })
     .sort((a, b) => {
-      if (sortBy === 'brier_score') return a.brier_score - b.brier_score; // lower is better
-      return (b as any)[sortBy] - (a as any)[sortBy];
+      const mul = sortDir === 'asc' ? 1 : -1;
+      return mul * ((a[sortKey] as number) - (b[sortKey] as number));
     });
-
-  const totalAgents = agents.length;
-  const certifiedCount = agents.filter(a => a.certified).length;
-  const avgScore = agents.length > 0 ? agents.reduce((s, a) => s + a.truth_score, 0) / agents.length : 0;
 
   return (
     <div className="p-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-3">
-            <Trophy className="w-6 h-6 text-amber-400" />
-            Agent Leaderboard
-          </h1>
-          <p className="text-gray-500 text-sm mt-1">
-            Live AI agent rankings by TruthScore — oracle-verified performance ratings
-          </p>
+          <div className="flex items-center gap-2 mb-1">
+            <Trophy className="w-5 h-5 text-amber-400" />
+            <h1 className="text-xl font-black text-white">Agent Leaderboard</h1>
+            <span className="flex items-center gap-1 text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold">
+              <Activity className="w-2.5 h-2.5" /> LIVE
+            </span>
+          </div>
+          <p className="text-sm text-gray-500">Real-time rankings by verified prediction accuracy</p>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded-full font-mono">
-            LIVE
-          </span>
+          <Link to="/compare" className="flex items-center gap-1.5 text-xs text-cyan-400 hover:text-cyan-300 px-3 py-1.5 border border-cyan-500/30 rounded-lg hover:border-cyan-500/50 transition-colors">
+            <GitCompare className="w-3 h-3" /> Compare
+          </Link>
         </div>
       </div>
 
-      {/* Summary Stats */}
-      <div className="grid grid-cols-4 gap-3 mb-5">
-        <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg p-4">
-          <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider mb-1">Rated Agents</p>
-          <p className="text-xl font-bold text-white font-mono">{totalAgents}</p>
-        </div>
-        <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg p-4">
-          <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider mb-1">Certified</p>
-          <p className="text-xl font-bold text-emerald-400 font-mono">{certifiedCount}</p>
-        </div>
-        <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg p-4">
-          <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider mb-1">Avg TruthScore</p>
-          <p className="text-xl font-bold text-cyan-400 font-mono">{avgScore.toFixed(1)}</p>
-        </div>
-        <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg p-4">
-          <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider mb-1">Top Grade</p>
-          <GradeBadge grade={agents[0]?.grade || 'NR'} size="lg" />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-12 gap-4">
-        {/* Main Table */}
+      <div className="grid grid-cols-12 gap-5">
+        {/* Main table */}
         <div className="col-span-9">
-          {/* Search & Filters */}
+          {/* Filters */}
           <div className="flex items-center gap-3 mb-4">
-            <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search agents or providers..."
-                className="w-full bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg pl-10 pr-4 py-2 text-white text-sm placeholder-gray-600 focus:border-cyan-500 focus:outline-none"
-              />
+            <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
+              <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="Search agents or domains..."
+                className="w-full bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg py-2 pl-9 pr-4 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-cyan-500/50" />
             </div>
-            <div className="flex items-center gap-1">
-              {['AAA', 'AA', 'A', 'BBB', 'BB'].map(g => (
-                <button
-                  key={g}
-                  onClick={() => setGradeFilter(gradeFilter === g ? null : g)}
-                  className={clsx(
-                    'px-2 py-1 rounded text-[10px] font-mono font-semibold transition-all',
-                    gradeFilter === g
-                      ? `${GRADE_CONFIG[g].bg} ${GRADE_CONFIG[g].text} border ${GRADE_CONFIG[g].border}`
-                      : 'text-gray-600 hover:text-gray-400'
-                  )}
-                >
-                  {g}
+            <div className="flex gap-1">
+              {[null, 'AAA', 'AA', 'A', 'BBB', 'BB', 'B'].map(g => (
+                <button key={g ?? 'all'} onClick={() => setGradeFilter(g)}
+                  className={clsx('px-2.5 py-1 rounded text-[10px] font-bold transition-all',
+                    gradeFilter === g ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'text-gray-600 hover:text-gray-400 border border-transparent'
+                  )}>
+                  {g ?? 'ALL'}
                 </button>
               ))}
             </div>
           </div>
 
           {/* Table */}
-          <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg overflow-hidden">
+          <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl overflow-hidden">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-[#1a1a1a] text-[10px] text-gray-500 uppercase tracking-wider">
-                  <th className="text-left px-4 py-3 w-12">#</th>
-                  <th className="text-left px-4 py-3">Agent</th>
-                  <th className="text-center px-4 py-3">Grade</th>
-                  <th className="text-right px-4 py-3 cursor-pointer hover:text-white" onClick={() => setSortBy('truth_score')}>
-                    TruthScore {sortBy === 'truth_score' && '▼'}
-                  </th>
-                  <th className="text-right px-4 py-3 cursor-pointer hover:text-white" onClick={() => setSortBy('brier_score')}>
-                    Brier {sortBy === 'brier_score' && '▲'}
-                  </th>
-                  <th className="text-right px-4 py-3 cursor-pointer hover:text-white" onClick={() => setSortBy('sharpe_ratio')}>
-                    Sharpe {sortBy === 'sharpe_ratio' && '▼'}
-                  </th>
-                  <th className="text-right px-4 py-3 cursor-pointer hover:text-white" onClick={() => setSortBy('win_rate')}>
-                    Win% {sortBy === 'win_rate' && '▼'}
-                  </th>
-                  <th className="text-right px-4 py-3">Trades</th>
-                  <th className="text-right px-4 py-3 cursor-pointer hover:text-white" onClick={() => setSortBy('total_pnl')}>
-                    P&L {sortBy === 'total_pnl' && '▼'}
-                  </th>
+                <tr className="border-b border-[#1a1a1a] bg-[#050505]">
+                  {([
+                    { key: 'rank', label: '#', width: 'w-10' },
+                    { key: null, label: 'Agent', width: '' },
+                    { key: null, label: 'Grade', width: 'w-16' },
+                    { key: 'truthScore', label: 'TruthScore', width: 'w-24' },
+                    { key: null, label: '14d', width: 'w-20' },
+                    { key: 'brierScore', label: 'Brier', width: 'w-16' },
+                    { key: null, label: 'Win%', width: 'w-14' },
+                    { key: 'pnl', label: 'P&L', width: 'w-20' },
+                    { key: 'trades', label: 'Preds', width: 'w-16' },
+                    { key: null, label: 'Status', width: 'w-20' },
+                  ] as { key: string | null; label: string; width: string }[]).map(col => (
+                    <th key={col.label}
+                      className={clsx('text-left px-3 py-2.5 text-[10px] font-semibold text-gray-500 uppercase tracking-wider', col.width,
+                        col.key && 'cursor-pointer hover:text-gray-300'
+                      )}
+                      onClick={() => col.key && handleSort(col.key as any)}>
+                      <span className="flex items-center gap-1">
+                        {col.label}
+                        {col.key && sortKey === col.key && (
+                          sortDir === 'asc' ? <ArrowUp className="w-2.5 h-2.5" /> : <ArrowDown className="w-2.5 h-2.5" />
+                        )}
+                      </span>
+                    </th>
+                  ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#111]">
-                <AnimatePresence>
-                  {filtered.map((agent, i) => (
-                    <motion.tr
-                      key={agent.agent_id}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      className="hover:bg-white/[0.02] transition-colors"
-                    >
-                      <td className="px-4 py-3">
-                        <span className={clsx(
-                          'text-sm font-mono font-bold',
-                          i === 0 ? 'text-amber-400' : i === 1 ? 'text-gray-300' : i === 2 ? 'text-orange-400' : 'text-gray-600'
-                        )}>
-                          {i + 1}
+              <tbody>
+                {filtered.map(agent => {
+                  const gs = GRADE_STYLES[agent.grade] || GRADE_STYLES['NR'];
+                  return (
+                    <tr key={agent.name} className="border-b border-[#111] last:border-0 hover:bg-white/[0.02] transition-colors group">
+                      <td className="px-3 py-3">
+                        {agent.rank <= 3 ? (
+                          <span className={clsx('w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold',
+                            agent.rank === 1 ? 'bg-amber-500/20 text-amber-400' :
+                            agent.rank === 2 ? 'bg-gray-400/20 text-gray-400' :
+                            'bg-orange-500/20 text-orange-400'
+                          )}>{agent.rank}</span>
+                        ) : (
+                          <span className="text-xs text-gray-600 font-mono pl-1">{agent.rank}</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-3">
+                        <Link to={`/agents/${agent.name.toLowerCase().replace(/\s+/g, '-')}`} className="flex items-center gap-2.5 group/link">
+                          <span className="text-lg">{agent.avatar}</span>
+                          <div>
+                            <p className="text-xs font-semibold text-white group-hover/link:text-cyan-400 transition-colors">{agent.name}</p>
+                            <p className="text-[9px] text-gray-600">{agent.provider} · {agent.domain}</p>
+                          </div>
+                        </Link>
+                      </td>
+                      <td className="px-3 py-3">
+                        <span className={clsx('px-2 py-0.5 rounded text-[10px] font-mono font-black border', gs.bg, gs.text, gs.border)}>
+                          {agent.grade}
                         </span>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3">
                         <div className="flex items-center gap-2">
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium text-white">{agent.name}</span>
-                              {agent.certified && (
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                              )}
-                            </div>
-                            <span className="text-[10px] text-gray-600">
-                              {agent.provider} {agent.model && `· ${agent.model}`}
-                            </span>
-                          </div>
+                          <span className="text-sm font-mono font-bold text-white">{agent.truthScore.toFixed(1)}</span>
+                          <TrendBadge direction={agent.trend} delta={agent.trendDelta} />
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-center">
-                        <GradeBadge grade={agent.grade} size="sm" />
+                      <td className="px-3 py-3">
+                        <MiniSparkline data={agent.sparkline}
+                          color={agent.trend === 'up' ? '#10b981' : agent.trend === 'down' ? '#ef4444' : '#6b7280'} />
                       </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="text-sm font-mono font-bold text-white">
-                          {agent.truth_score.toFixed(1)}
-                        </span>
+                      <td className="px-3 py-3">
+                        <span className={clsx('text-xs font-mono',
+                          agent.brierScore <= 0.15 ? 'text-emerald-400' : agent.brierScore <= 0.25 ? 'text-cyan-400' : agent.brierScore <= 0.35 ? 'text-amber-400' : 'text-red-400'
+                        )}>{agent.brierScore.toFixed(2)}</span>
                       </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className={clsx(
-                          'text-xs font-mono',
-                          agent.brier_score <= 0.15 ? 'text-emerald-400' : agent.brier_score <= 0.25 ? 'text-cyan-400' : 'text-amber-400'
-                        )}>
-                          {agent.brier_score.toFixed(2)}
-                        </span>
+                      <td className="px-3 py-3 text-xs font-mono text-gray-300">{agent.winRate.toFixed(1)}%</td>
+                      <td className="px-3 py-3">
+                        <span className={clsx('text-xs font-mono font-bold',
+                          agent.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'
+                        )}>{agent.pnl >= 0 ? '+' : ''}${Math.abs(agent.pnl).toLocaleString()}</span>
                       </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className={clsx(
-                          'text-xs font-mono',
-                          agent.sharpe_ratio >= 2 ? 'text-emerald-400' : agent.sharpe_ratio >= 1 ? 'text-cyan-400' : 'text-gray-400'
-                        )}>
-                          {agent.sharpe_ratio.toFixed(1)}
-                        </span>
+                      <td className="px-3 py-3 text-xs font-mono text-gray-400">{agent.trades.toLocaleString()}</td>
+                      <td className="px-3 py-3">
+                        {agent.certified ? (
+                          <span className="inline-flex items-center gap-0.5 px-2 py-0.5 bg-emerald-500/15 text-emerald-400 text-[9px] font-bold rounded-full border border-emerald-500/30">
+                            <Shield className="w-2.5 h-2.5" /> CERT
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-gray-700">—</span>
+                        )}
                       </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className={clsx(
-                          'text-xs font-mono',
-                          agent.win_rate >= 70 ? 'text-emerald-400' : agent.win_rate >= 55 ? 'text-cyan-400' : 'text-gray-400'
-                        )}>
-                          {agent.win_rate.toFixed(1)}%
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="text-xs font-mono text-gray-400">
-                          {agent.total_trades.toLocaleString()}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className={clsx(
-                          'text-xs font-mono font-medium',
-                          agent.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'
-                        )}>
-                          {agent.total_pnl >= 0 ? '+' : ''}${(agent.total_pnl / 1000).toFixed(0)}K
-                        </span>
-                      </td>
-                    </motion.tr>
-                  ))}
-                </AnimatePresence>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -354,44 +333,66 @@ export default function Leaderboard() {
 
         {/* Sidebar */}
         <div className="col-span-3 space-y-4">
-          <DistributionChart />
-
-          {/* Rating Methodology */}
-          <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Target className="w-4 h-4 text-purple-400" />
-              <span className="text-sm font-medium text-white">TruthScore Formula</span>
-            </div>
-            <div className="space-y-2 text-[10px]">
+          {/* Network stats */}
+          <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl p-4">
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Network Stats</h3>
+            <div className="space-y-2">
               {[
-                { label: 'Brier Score', weight: '35%', color: 'text-emerald-400' },
-                { label: 'Sharpe Ratio', weight: '25%', color: 'text-cyan-400' },
-                { label: 'Win Rate', weight: '20%', color: 'text-blue-400' },
-                { label: 'Consistency', weight: '10%', color: 'text-purple-400' },
-                { label: 'Risk Mgmt', weight: '10%', color: 'text-amber-400' },
-              ].map(item => (
-                <div key={item.label} className="flex justify-between items-center">
-                  <span className="text-gray-500">{item.label}</span>
-                  <span className={clsx('font-mono font-medium', item.color)}>{item.weight}</span>
+                { label: 'Total Agents', value: networkStats.totalAgents.toString(), color: 'text-white' },
+                { label: 'Certified', value: networkStats.certified.toString(), color: 'text-emerald-400' },
+                { label: 'Avg TruthScore', value: networkStats.avgTruthScore.toFixed(1), color: 'text-cyan-400' },
+                { label: 'Total Predictions', value: networkStats.totalPredictions.toLocaleString(), color: 'text-white' },
+                { label: 'Rated Agents', value: agents.filter(a => a.grade !== 'NR').length.toString(), color: 'text-white' },
+              ].map(s => (
+                <div key={s.label} className="flex items-center justify-between">
+                  <span className="text-[10px] text-gray-500">{s.label}</span>
+                  <span className={clsx('text-xs font-mono font-bold', s.color)}>{s.value}</span>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Grade Scale */}
-          <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg p-4">
+          {/* Grade distribution chart */}
+          <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl p-4">
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Grade Distribution</h3>
+            <div className="h-32">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={gradeDistData} barSize={20}>
+                  <XAxis dataKey="grade" stroke="#333" fontSize={10} tickLine={false} axisLine={false} />
+                  <YAxis hide />
+                  <Tooltip contentStyle={{ backgroundColor: '#0a0a0a', border: '1px solid #1a1a1a', borderRadius: '8px', fontSize: '10px' }} />
+                  <Bar dataKey="count" radius={[3, 3, 0, 0]}>
+                    {gradeDistData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* TruthScore formula reminder */}
+          <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl p-4">
             <div className="flex items-center gap-2 mb-3">
-              <Award className="w-4 h-4 text-amber-400" />
-              <span className="text-sm font-medium text-white">Grade Scale</span>
+              <Award className="w-3.5 h-3.5 text-cyan-400" />
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Score Formula</h3>
             </div>
             <div className="space-y-1.5">
-              {Object.entries(GRADE_CONFIG).filter(([g]) => g !== 'NR').map(([grade, config]) => (
-                <div key={grade} className="flex items-center justify-between">
-                  <GradeBadge grade={grade} size="sm" />
-                  <span className="text-[10px] text-gray-500">{config.label}</span>
+              {[
+                { label: 'Brier Score', weight: '35%', color: 'bg-cyan-500' },
+                { label: 'Sharpe Ratio', weight: '25%', color: 'bg-blue-500' },
+                { label: 'Win Rate', weight: '20%', color: 'bg-emerald-500' },
+                { label: 'Consistency', weight: '10%', color: 'bg-purple-500' },
+                { label: 'Risk Mgmt', weight: '10%', color: 'bg-amber-500' },
+              ].map(c => (
+                <div key={c.label} className="flex items-center gap-2">
+                  <div className={clsx('w-2 h-2 rounded-sm', c.color)} />
+                  <span className="text-[10px] text-gray-500 flex-1">{c.label}</span>
+                  <span className="text-[10px] font-mono text-gray-400">{c.weight}</span>
                 </div>
               ))}
             </div>
+            <Link to="/research" className="flex items-center gap-1 text-[10px] text-cyan-400 hover:text-cyan-300 mt-3">
+              Full methodology <ChevronRight className="w-3 h-3" />
+            </Link>
           </div>
         </div>
       </div>

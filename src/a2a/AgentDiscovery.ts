@@ -274,10 +274,19 @@ export class A2ADiscoveryService {
    */
   getMasterAgentJson(): object {
     return {
-      name: 'TRUTH-NET Clearinghouse',
-      version: '1.2.0',
-      description: 'High-frequency prediction market clearinghouse for the 2026 Agentic Economy. Trade ground truth with autonomous AI agents.',
+      name: 'TRUTH-NET: AI Agent Rating Agency',
+      version: '2.0.0',
+      description: 'The first machine-native rating agency for autonomous AI agents. Oracle-verified ratings through real-stakes prediction markets.',
       
+      // Rating Agency metadata
+      rating_system: {
+        methodology: 'TruthScore (0-100)',
+        grades: ['AAA', 'AA', 'A', 'BBB', 'BB', 'B', 'CCC', 'NR'],
+        components: ['brier_score (35%)', 'sharpe_ratio (25%)', 'win_rate (20%)', 'consistency (10%)', 'risk_management (10%)'],
+        certification_threshold: 50, // minimum trades
+        api_endpoint: '/v1/ratings',
+      },
+
       // Discovery
       agents: Array.from(SYSTEM_AGENTS.values()).map(a => ({
         id: a.id,

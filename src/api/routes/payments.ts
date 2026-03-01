@@ -165,46 +165,140 @@ export function createPaymentRoutes(escrow: EscrowLedger, eventBus: EventBus) {
         return reply.status(400).send({ error: 'Webhook signature verification failed' });
       }
 
-      if (event.type === 'checkout.session.completed') {
-        const session = event.data.object as Stripe.Checkout.Session;
-        const sessionId = session.id;
-        const userId = session.metadata?.userId;
-        const amount = parseFloat(session.metadata?.amount || '0');
+      // Handle different event types
+      switch (event.type) {
+        case 'checkout.session.completed': {
+          const session = event.data.object as Stripe.Checkout.Session;
+          const sessionId = session.id;
+          const userId = session.metadata?.userId;
+          const eventType = session.metadata?.type;
 
-        // Idempotency check - prevent double-credit
-        if (processedSessions.has(sessionId)) {
-          console.log('[Payments] Duplicate webhook, session already processed:', sessionId);
-          return reply.send({ received: true });
-        }
-
-        if (userId && amount > 0) {
-          try {
-            // Credit the user's wallet via EscrowLedger
-            await escrow.depositFromStripe(userId, amount, sessionId);
-            processedSessions.add(sessionId);
-
-            // Track deposit history
-            if (!userDeposits.has(userId)) {
-              userDeposits.set(userId, []);
-            }
-            userDeposits.get(userId)!.push({
-              amount,
-              stripeSessionId: sessionId,
-              timestamp: new Date(),
-            });
-
-            eventBus.publish('payment.deposit.completed', {
-              userId,
-              amount,
-              sessionId,
-              timestamp: new Date().toISOString(),
-            });
-
-            console.log(`[Payments] Credited $${amount} to user ${userId} (session: ${sessionId})`);
-          } catch (error: any) {
-            console.error('[Payments] Failed to credit wallet:', error.message);
+          // Idempotency check - prevent double-processing
+          if (processedSessions.has(sessionId)) {
+            console.log('[Payments] Duplicate webhook, session already processed:', sessionId);
+            return reply.send({ received: true });
           }
+
+          if (eventType === 'truthnet_subscription' && session.mode === 'subscription') {
+            // ── SUBSCRIPTION CHECKOUT ──
+            const plan = session.metadata?.plan as keyof typeof PLANS;
+            const planConfig = plan ? PLANS[plan] : null;
+
+            if (userId && planConfig) {
+              const sub: Subscription = {
+                id: `sub-${Date.now()}`,
+                userId,
+                plan: plan as 'free' | 'developer' | 'pro' | 'enterprise',
+                stripeCustomerId: session.customer as string,
+                stripeSubscriptionId: session.subscription as string,
+                status: 'active',
+                agentSlots: planConfig.agentSlots,
+                apiCallsLimit: planConfig.apiCallsLimit,
+                currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // ~30 days
+                createdAt: new Date(),
+              };
+              subscriptions.set(userId, sub);
+              processedSessions.add(sessionId);
+
+              eventBus.publish('payment.subscription.created', {
+                userId,
+                plan,
+                subscriptionId: sub.id,
+                stripeSubscriptionId: session.subscription,
+                timestamp: new Date().toISOString(),
+              });
+
+              console.log(`[Payments] Subscription created: ${plan} for user ${userId} (session: ${sessionId})`);
+            }
+          } else {
+            // ── DEPOSIT CHECKOUT ──
+            const amount = parseFloat(session.metadata?.amount || '0');
+
+            if (userId && amount > 0) {
+              try {
+                await escrow.depositFromStripe(userId, amount, sessionId);
+                processedSessions.add(sessionId);
+
+                if (!userDeposits.has(userId)) {
+                  userDeposits.set(userId, []);
+                }
+                userDeposits.get(userId)!.push({
+                  amount,
+                  stripeSessionId: sessionId,
+                  timestamp: new Date(),
+                });
+
+                eventBus.publish('payment.deposit.completed', {
+                  userId,
+                  amount,
+                  sessionId,
+                  timestamp: new Date().toISOString(),
+                });
+
+                console.log(`[Payments] Credited $${amount} to user ${userId} (session: ${sessionId})`);
+              } catch (error: any) {
+                console.error('[Payments] Failed to credit wallet:', error.message);
+              }
+            }
+          }
+          break;
         }
+
+        case 'customer.subscription.updated': {
+          const subscription = event.data.object as Stripe.Subscription;
+          // Find the user by stripe customer ID
+          for (const [userId, sub] of subscriptions.entries()) {
+            if (sub.stripeSubscriptionId === subscription.id) {
+              sub.status = subscription.status === 'active' ? 'active' : 'past_due';
+              sub.currentPeriodEnd = new Date((subscription as any).current_period_end * 1000);
+              console.log(`[Payments] Subscription updated for user ${userId}: ${sub.status}`);
+              break;
+            }
+          }
+          break;
+        }
+
+        case 'customer.subscription.deleted': {
+          const subscription = event.data.object as Stripe.Subscription;
+          for (const [userId, sub] of subscriptions.entries()) {
+            if (sub.stripeSubscriptionId === subscription.id) {
+              sub.status = 'cancelled';
+              sub.plan = 'free';
+              sub.agentSlots = PLANS.free.agentSlots;
+              sub.apiCallsLimit = PLANS.free.apiCallsLimit;
+
+              eventBus.publish('payment.subscription.cancelled', {
+                userId,
+                reason: 'stripe_deleted',
+                timestamp: new Date().toISOString(),
+              });
+
+              console.log(`[Payments] Subscription cancelled for user ${userId}`);
+              break;
+            }
+          }
+          break;
+        }
+
+        case 'invoice.payment_failed': {
+          const invoice = event.data.object as Stripe.Invoice;
+          const customerId = invoice.customer as string;
+          for (const [userId, sub] of subscriptions.entries()) {
+            if (sub.stripeCustomerId === customerId) {
+              sub.status = 'past_due';
+              eventBus.publish('payment.subscription.past_due', {
+                userId,
+                timestamp: new Date().toISOString(),
+              });
+              console.log(`[Payments] Payment failed for user ${userId}, marking past_due`);
+              break;
+            }
+          }
+          break;
+        }
+
+        default:
+          console.log(`[Payments] Unhandled webhook event type: ${event.type}`);
       }
 
       return reply.send({ received: true });
@@ -558,6 +652,68 @@ export function createPaymentRoutes(escrow: EscrowLedger, eventBus: EventBus) {
       return reply.send({
         success: true,
         data: { message: 'Subscription cancelled. Downgraded to Free tier.' },
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // POST /payments/billing-portal - Redirect to Stripe Customer Portal
+    // -----------------------------------------------------------------------
+    fastify.post('/payments/billing-portal', async (
+      request: FastifyRequest<{ Body: { userId: string } }>,
+      reply: FastifyReply
+    ) => {
+      const { userId } = request.body;
+      const sub = subscriptions.get(userId);
+
+      if (!sub || !sub.stripeCustomerId) {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'NO_CUSTOMER', message: 'No Stripe customer found for this user' },
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      try {
+        const portalSession = await stripe.billingPortal.sessions.create({
+          customer: sub.stripeCustomerId,
+          return_url: `${FRONTEND_URL}/`,
+        });
+
+        return reply.send({
+          success: true,
+          data: { url: portalSession.url },
+          timestamp: new Date().toISOString(),
+        });
+      } catch (error: any) {
+        console.error('[Payments] Billing portal error:', error.message);
+        return reply.status(500).send({
+          success: false,
+          error: { code: 'STRIPE_ERROR', message: error.message },
+          timestamp: new Date().toISOString(),
+        });
+      }
+    });
+
+    // -----------------------------------------------------------------------
+    // GET /payments/subscription-status - Get subscription for middleware
+    // Helper used by API key system to check tier
+    // -----------------------------------------------------------------------
+    fastify.get('/payments/subscription-status/:userId', async (
+      request: FastifyRequest<{ Params: { userId: string } }>,
+      reply: FastifyReply
+    ) => {
+      const { userId } = request.params;
+      const sub = subscriptions.get(userId);
+      
+      return reply.send({
+        success: true,
+        data: {
+          plan: sub?.plan || 'free',
+          status: sub?.status || 'active',
+          apiCallsLimit: sub?.apiCallsLimit || PLANS.free.apiCallsLimit,
+          agentSlots: sub?.agentSlots || PLANS.free.agentSlots,
+        },
         timestamp: new Date().toISOString(),
       });
     });

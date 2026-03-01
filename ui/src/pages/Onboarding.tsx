@@ -144,9 +144,9 @@ export default function Onboarding() {
         }
       }
       await markOnboarded();
-      navigate('/');
+      navigate('/dashboard');
     } catch {
-      navigate('/');
+      navigate('/dashboard');
     } finally {
       setIsLoading(false);
     }

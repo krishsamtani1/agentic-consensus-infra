@@ -240,6 +240,10 @@ export class MatchingEngine {
     for (const restingOrder of book.getMatchableOrders(order.side, order.price)) {
       if (order.remaining_qty <= 0) break;
       if (iterations >= this.config.maxOrdersPerMatch) break;
+      
+      // Prevent self-trading: skip orders from the same agent
+      if (restingOrder.agent_id === order.agent_id) continue;
+      
       iterations++;
 
       // Calculate fill quantity

@@ -40,7 +40,11 @@ import { createGovernanceRoutes } from './api/routes/governance.js';
 import { createPaymentRoutes } from './api/routes/payments.js';
 import { createAuthRoutes } from './api/routes/auth.js';
 import { createRatingRoutes } from './api/routes/ratings.js';
+import { createApiKeyRoutes } from './api/routes/apiKeys.js';
+import { createWebhookRoutes } from './api/routes/webhooks.js';
+import { createBenchmarkRoutes } from './api/routes/benchmark.js';
 import { getRatingEngine } from './rating/RatingEngine.js';
+import { createExternalAgentRoutes } from './api/routes/externalAgents.js';
 
 import { EscrowLedger } from './engine/escrow/EscrowLedger.js';
 import { MatchingEngine } from './engine/matcher/MatchingEngine.js';
@@ -48,6 +52,7 @@ import { OracleEngine } from './oracle/OracleEngine.js';
 import { EventBus } from './events/EventBus.js';
 import { TruthNetWebSocket } from './api/websocket/WebSocketServer.js';
 import { circuitBreakers } from './core/CircuitBreaker.js';
+import { seedPlatform } from './boot/PlatformSeeder.js';
 
 // ============================================================================
 // CONFIGURATION
@@ -88,8 +93,9 @@ const dbCircuit = circuitBreakers.get('database', { failureThreshold: 5, timeout
 const oracleCircuit = circuitBreakers.get('oracle', { failureThreshold: 3, timeout: 60000 });
 
 // Subscribe to key events for logging
-eventBus.subscribe('trades.executed', (data) => {
-  console.log(`[TRADE] Executed: ${JSON.stringify(data)}`);
+eventBus.subscribe('trades.executed', (data: any) => {
+  const trade = data.trade || data;
+  console.log(`[TRADE] ${trade.buyer_id} bought ${trade.quantity} ${trade.outcome} @ ${trade.price} on ${trade.market_id?.substring(0,8)}`);
 });
 
 eventBus.subscribe('markets.resolved', (data) => {
@@ -117,9 +123,17 @@ async function registerPlugins() {
   // CORS - Allow cross-origin requests
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
   await fastify.register(cors, {
-    origin: [frontendUrl, 'https://truthnet.com', 'https://www.truthnet.com', 'http://localhost:5173', 'http://localhost:5174'],
+    origin: [
+      frontendUrl,
+      'https://truthnet.com',
+      'https://www.truthnet.com',
+      'https://truthnet.io',
+      'https://www.truthnet.io',
+      'http://localhost:5173',
+      'http://localhost:5174',
+    ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Agent-ID'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Agent-ID', 'X-API-Key'],
     credentials: true,
   });
 
@@ -187,6 +201,33 @@ async function registerRoutes() {
     const ratingEngine = getRatingEngine(eventBus);
     console.log('[TRUTH-NET] Margin Engine, Reputation Ledger, and Rating Engine initialized');
 
+    // Wire ReputationLedger → RatingEngine: Brier score updates flow into TruthScore
+    eventBus.subscribe('reputation.prediction_verified', (data: any) => {
+      if (data.agent_id) {
+        const rep = reputationLedger.getReputation(data.agent_id);
+        if (rep) {
+          ratingEngine.updateBrierScore(data.agent_id, rep.brier_score);
+        }
+      }
+    });
+
+    // Wire reputation updates → RatingEngine
+    eventBus.subscribe('reputation.updated', (data: any) => {
+      if (data.agent_id && data.reputation) {
+        const rep = data.reputation;
+        // Initialize rating if needed, then update raw metrics
+        let rating = ratingEngine.getRating(data.agent_id);
+        if (!rating) {
+          rating = ratingEngine.initializeRating(data.agent_id);
+        }
+        // Keep rating metrics in sync with reputation metrics
+        rating.win_rate = rep.win_rate || 0;
+        rating.total_pnl = rep.total_pnl || 0;
+        rating.total_trades = rep.total_trades || 0;
+        rating.winning_trades = rep.winning_trades || 0;
+      }
+    });
+
     // Rating API (primary product)
     await app.register(createRatingRoutes(ratingEngine, eventBus));
 
@@ -198,6 +239,18 @@ async function registerRoutes() {
 
     // Authentication
     await app.register(createAuthRoutes(escrow, eventBus));
+
+    // API Key Management
+    await app.register(createApiKeyRoutes());
+
+    // Webhook Notifications (Pro/Enterprise)
+    await app.register(createWebhookRoutes(eventBus));
+
+    // Benchmarking-as-a-Service
+    await app.register(createBenchmarkRoutes(eventBus));
+
+    // External Agent API (the core product API for real users)
+    await app.register(createExternalAgentRoutes(matchingEngine, escrow, eventBus));
     
     // Initialize Doctrine Engine and Agent Manager
     const doctrineEngine = getDoctrineEngine(eventBus);
@@ -229,12 +282,13 @@ async function registerRoutes() {
 
   // Hook wash trading detector into trade events
   eventBus.subscribe('trades.executed', (data: any) => {
-    if (data.buyer_id && data.seller_id) {
+    const trade = data.trade || data;
+    if (trade.buyer_id && trade.seller_id) {
       washTradingDetector.recordTrade(
-        data.buyer_id,
-        data.seller_id,
-        data.market_id,
-        data.quantity
+        trade.buyer_id,
+        trade.seller_id,
+        trade.market_id,
+        trade.quantity
       );
     }
   });
@@ -308,6 +362,32 @@ async function start() {
 
     // Start WebSocket server
     wsServer.start(config.wsPort);
+
+    // Seed the platform: agents, markets, trading loop, settlement
+    const seedResult = await seedPlatform(matchingEngine, escrow, eventBus);
+    console.log(`[TRUTH-NET] Platform seeded — settlement: ${seedResult.settlement ? 'online' : 'off'}, trading: ${seedResult.tradingLoop ? 'active' : 'off'}`);
+
+    // Add LLM reasoning and trading stats endpoints (requires trading loop reference)
+    fastify.get('/v1/reasoning', async () => ({
+      success: true,
+      data: seedResult.tradingLoop.getAllReasonings(),
+      timestamp: new Date().toISOString(),
+    }));
+
+    fastify.get('/v1/reasoning/:agentId', async (request: any) => ({
+      success: true,
+      data: seedResult.tradingLoop.getReasonings(request.params.agentId),
+      timestamp: new Date().toISOString(),
+    }));
+
+    fastify.get('/v1/trading/stats', async () => ({
+      success: true,
+      data: {
+        ...seedResult.tradingLoop.getStats(),
+        settlement: seedResult.settlement.getStats(),
+      },
+      timestamp: new Date().toISOString(),
+    }));
 
     await fastify.listen({
       port: config.port,

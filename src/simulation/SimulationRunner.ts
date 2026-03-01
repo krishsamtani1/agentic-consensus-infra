@@ -24,6 +24,7 @@ import {
 import { MatchingEngine } from '../engine/matcher/MatchingEngine.js';
 import { EscrowLedger } from '../engine/escrow/EscrowLedger.js';
 import { EventBus } from '../events/EventBus.js';
+import { getRatingEngine, RatingEngine } from '../rating/RatingEngine.js';
 
 // ============================================================================
 // MOCK AGENT STRATEGIES
@@ -172,6 +173,7 @@ export class SimulationRunner {
   private escrow: EscrowLedger;
   private eventBus: EventBus;
   private engine: MatchingEngine;
+  private ratingEngine: RatingEngine;
   private agents: MockAgentConfig[] = [];
   private markets: Market[] = [];
   private state: SimulationState;
@@ -181,6 +183,7 @@ export class SimulationRunner {
     this.escrow = new EscrowLedger();
     this.eventBus = new EventBus();
     this.engine = new MatchingEngine(this.escrow, this.eventBus);
+    this.ratingEngine = getRatingEngine(this.eventBus);
 
     this.state = {
       tick: 0,
@@ -220,7 +223,12 @@ export class SimulationRunner {
       this.engine.initializeMarket(market.id);
     }
 
-    console.log(`Created ${this.agents.length} agents and ${this.markets.length} markets`);
+    // Initialize ratings for each agent
+    for (const agent of this.agents) {
+      this.ratingEngine.initializeRating(agent.id);
+    }
+
+    console.log(`Created ${this.agents.length} agents and ${this.markets.length} markets (ratings initialized)`);
   }
 
   /**
@@ -351,7 +359,20 @@ export class SimulationRunner {
         await this.engine.processOrder(agentConfig.id, market.id, orderRequest);
       } catch (error) {
         // Expected: insufficient funds, etc.
-        // console.debug(`Order failed for ${agentConfig.name}: ${error}`);
+      }
+    }
+
+    // Every 50 ticks, recalculate ratings and simulate Brier updates
+    if (this.state.tick > 0 && this.state.tick % 50 === 0) {
+      for (const agent of this.agents) {
+        // Simulate Brier score based on strategy quality
+        const baseBrier = agent.strategy === 'informed' ? 0.08 :
+                          agent.strategy === 'momentum' ? 0.18 :
+                          agent.strategy === 'mean_reversion' ? 0.22 : 0.35;
+        const noise = (Math.random() - 0.5) * 0.1;
+        const brierScore = Math.max(0.01, Math.min(0.5, baseBrier + noise));
+        
+        this.ratingEngine.updateBrierScore(agent.id, brierScore);
       }
     }
   }
@@ -410,6 +431,26 @@ export class SimulationRunner {
           `${market.ticker}: YES bids=${yesBids.toFixed(0)}, asks=${yesAsks.toFixed(0)}`
         );
       }
+    }
+
+    // Agent ratings
+    console.log('\n--- Agent Ratings (TruthScore) ---');
+    const leaderboard = this.ratingEngine.getFullLeaderboard(10);
+    for (const rating of leaderboard) {
+      const agentConfig = this.agents.find(a => a.id === rating.agent_id);
+      const name = agentConfig?.name || rating.agent_id.slice(0, 8);
+      const strategy = agentConfig?.strategy || 'unknown';
+      console.log(
+        `${name} (${strategy}): ` +
+        `Grade=${rating.grade} Score=${rating.truth_score.toFixed(1)} ` +
+        `Brier=${rating.brier_score.toFixed(3)} Trades=${rating.total_trades}`
+      );
+    }
+
+    console.log('\n--- Grade Distribution ---');
+    const distribution = this.ratingEngine.getDistribution();
+    for (const [grade, count] of Object.entries(distribution)) {
+      if (count > 0) console.log(`  ${grade}: ${count}`);
     }
 
     console.log('==========================================\n');

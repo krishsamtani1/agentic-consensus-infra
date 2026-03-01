@@ -10,6 +10,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { 
   Plus, 
   Bot, 
@@ -43,7 +44,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
-import { apiClient } from '../api/client';
+import { apiClient, ratingsAPI } from '../api/client';
 
 // ============================================================================
 // TYPES
@@ -318,10 +319,27 @@ function AgentCard({ agent, onToggleStatus, onDelete }: {
       <div className="p-4">
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-3">
-            <div className="text-3xl">{agent.avatar}</div>
+            <div className="relative">
+              <div className="text-3xl">{agent.avatar}</div>
+              {agent.truthScore >= 0.8 && (
+                <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full flex items-center justify-center">
+                  <Shield className="w-2.5 h-2.5 text-white" />
+                </div>
+              )}
+            </div>
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="font-semibold text-white">{agent.name}</h3>
+                <span className={clsx(
+                  'text-[10px] font-bold font-mono px-1.5 py-0.5 rounded',
+                  agent.truthScore >= 0.9 ? 'bg-emerald-500/20 text-emerald-400' :
+                  agent.truthScore >= 0.8 ? 'bg-cyan-500/20 text-cyan-400' :
+                  agent.truthScore >= 0.7 ? 'bg-blue-500/20 text-blue-400' :
+                  agent.truthScore >= 0.6 ? 'bg-amber-500/20 text-amber-400' :
+                  'bg-gray-500/20 text-gray-400'
+                )}>
+                  {agent.truthScore >= 0.9 ? 'AAA' : agent.truthScore >= 0.8 ? 'AA' : agent.truthScore >= 0.7 ? 'A' : agent.truthScore >= 0.6 ? 'BBB' : 'BB'}
+                </span>
                 {agent.mcpEndpoint && (
                   <span className="flex items-center gap-1 text-[10px] bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded">
                     <Plug className="w-3 h-3" /> MCP
@@ -741,52 +759,32 @@ export default function Agents() {
   const [showCreate, setShowCreate] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Fetch agents from API
+  // Fetch live rating data to overlay on mock agents
+  const { data: ratingData } = useQuery({
+    queryKey: ['agents-ratings'],
+    queryFn: () => ratingsAPI.leaderboard(50, true),
+    staleTime: 15_000,
+    refetchInterval: 15_000,
+  });
+
+  // Merge live rating data into agent cards
   useEffect(() => {
-    const fetchAgents = async () => {
-      setIsLoading(true);
-      try {
-        const response = await apiClient.get<{ agents: any[] }>('/agents');
-        if (response?.agents?.length > 0) {
-          // Merge API data with mock structure
-          const apiAgents: AgentData[] = response.agents.map((a: any) => ({
-            id: a.id,
-            name: a.name,
-            description: a.strategy_persona || a.description || '',
-            avatar: a.avatar_url || '🤖',
-            strategyPersona: a.strategy_persona || '',
-            mcpEndpoint: a.mcp_endpoint || '',
-            truthScore: a.metrics?.truth_score || 0.5,
-            brierScore: a.metrics?.brier_score || 0.35,
-            reputationHash: `0x${a.id.slice(-8)}...`,
-            totalTrades: a.metrics?.total_trades || 0,
-            winningTrades: a.metrics?.winning_trades || 0,
-            totalPnl: a.metrics?.total_pnl || 0,
-            stakedBudget: a.staked_budget || 100000,
-            permissions: {
-              googleNews: true,
-              marineTraffic: false,
-              privateLiquidity: false,
-              noaaWeather: false,
-              githubActivity: false,
-              socialSentiment: true,
-            },
-            topics: a.trading_config?.allowed_topics || [],
-            maxPositionPct: a.trading_config?.max_position_pct || 15,
-            maxExposurePct: a.trading_config?.max_exposure_pct || 40,
-            status: a.status || 'active',
-            type: a.mcp_endpoint ? 'external' : 'system',
-          }));
-          setAgents(apiAgents);
+    if (ratingData?.leaderboard && ratingData.leaderboard.length > 0) {
+      setAgents(prev => {
+        const updated = [...prev];
+        for (const entry of ratingData.leaderboard) {
+          const match = updated.find(a => a.id === entry.agent_id);
+          if (match) {
+            match.truthScore = entry.truth_score / 100; // API returns 0-100, cards show 0-1
+            match.brierScore = entry.brier_score ?? match.brierScore;
+            match.totalTrades = entry.total_trades ?? match.totalTrades;
+            match.totalPnl = entry.total_pnl ?? match.totalPnl;
+          }
         }
-      } catch (e) {
-        console.log('Using mock agents');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchAgents();
-  }, []);
+        return updated;
+      });
+    }
+  }, [ratingData]);
 
   const handleToggleStatus = (id: string) => {
     setAgents(prev => prev.map(a => 

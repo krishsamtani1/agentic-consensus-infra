@@ -12,6 +12,7 @@ import { OracleEngine } from '../../oracle/OracleEngine.js';
 import { getMarketSeeder } from '../../oracle/MarketSeeder.js';
 import { getLiveNewsMarkets } from './liveNews.js';
 import { EventBus } from '../../events/EventBus.js';
+import { seededMarkets } from '../../boot/PlatformSeeder.js';
 
 // In-memory store (production would use PostgreSQL)
 const markets: Map<string, Market> = new Map();
@@ -142,11 +143,40 @@ export function createMarketRoutes(engine: MatchingEngine, oracle: OracleEngine,
         return reply.send(cachedResponse.data);
       }
 
-      // Combine seeded markets + live news markets
+      // Combine seeded markets + live news markets + platform seeder markets
       const liveMarkets = getLiveNewsMarkets();
+      
+      // Convert platform seeder markets to Market format
+      const platformMarkets: Market[] = Array.from(seededMarkets.values()).map(sm => ({
+        id: sm.id,
+        ticker: sm.ticker,
+        title: sm.title,
+        description: sm.description,
+        status: sm.status === 'open' ? MarketStatus.ACTIVE : MarketStatus.SETTLED,
+        outcome: null,
+        category: sm.category,
+        tags: sm.tags,
+        volume_yes: sm.volume_yes,
+        volume_no: sm.volume_no,
+        last_price_yes: sm.last_price_yes,
+        last_price_no: sm.last_price_no,
+        open_interest: 0,
+        created_at: new Date(sm.created_at),
+        opens_at: new Date(sm.created_at),
+        closes_at: new Date(sm.closes_at),
+        resolves_at: new Date(sm.resolves_at),
+        resolution_source: sm.resolution_source,
+        resolution_schema: { type: 'oracle' },
+        min_order_size: 1,
+        max_position: 10000,
+        fee_rate: 0.002,
+        metadata: {},
+        source: 'seeded',
+      } as unknown as Market));
+      
       let result = source === 'live' ? liveMarkets 
-                 : source === 'seeded' ? Array.from(markets.values())
-                 : [...Array.from(markets.values()), ...liveMarkets];
+                 : source === 'seeded' ? [...Array.from(markets.values()), ...platformMarkets]
+                 : [...Array.from(markets.values()), ...liveMarkets, ...platformMarkets];
 
       // Filter
       if (status) result = result.filter(m => m.status === status);

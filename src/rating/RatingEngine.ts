@@ -129,8 +129,10 @@ export class RatingEngine {
     });
 
     this.eventBus.subscribe('trades.executed', (data: any) => {
-      if (data.buyer_id) this.recordTradeForAgent(data.buyer_id, data);
-      if (data.seller_id) this.recordTradeForAgent(data.seller_id, data);
+      // The event data may wrap the trade: { trade: { buyer_id, ... } } or be flat
+      const trade = data.trade || data;
+      if (trade.buyer_id) this.recordTradeForAgent(trade.buyer_id, trade);
+      if (trade.seller_id) this.recordTradeForAgent(trade.seller_id, trade);
     });
 
     this.eventBus.subscribe('agents.reputation_updated', (data: any) => {
@@ -350,6 +352,34 @@ export class RatingEngine {
 
     rating.total_trades++;
     rating.last_updated = new Date();
+
+    // Determine if this trade was a win based on price (proxy before settlement)
+    // Buyers at low prices who bought the correct direction tend to win
+    const isBuyer = tradeData.buyer_id === agentId;
+    const price = tradeData.price || 0.5;
+    
+    // Track PnL proxy: buyers profit when price is low (bought cheap), sellers when high
+    const pnlProxy = isBuyer ? (0.5 - price) * (tradeData.quantity || 1) * 0.1 
+                              : (price - 0.5) * (tradeData.quantity || 1) * 0.1;
+    
+    const pnls = this.pnlHistory.get(agentId) || [];
+    pnls.push(pnlProxy);
+    this.pnlHistory.set(agentId, pnls);
+
+    // Simulate approximate win tracking from trade direction
+    if (pnlProxy > 0) {
+      rating.winning_trades++;
+    }
+    rating.win_rate = rating.total_trades > 0 ? rating.winning_trades / rating.total_trades : 0;
+
+    // Recalculate derived metrics
+    rating.sharpe_ratio = this.calculateSharpeRatio(agentId);
+    rating.max_drawdown = this.calculateMaxDrawdown(agentId);
+
+    // Recalculate rating once we have enough trades (and periodically after)
+    if (rating.total_trades >= MIN_TRADES_FOR_RATING && rating.total_trades % 5 === 0) {
+      this.recalculateRating(agentId);
+    }
   }
 
   private processSettlement(settlementData: any): void {

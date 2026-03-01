@@ -228,33 +228,41 @@ function MarketTableView({ markets, onTrade }: { markets: Market[]; onTrade: (m:
 // ============================================================================
 
 function OrderBookDisplay({ marketId }: { marketId: string }) {
-  const mockBids = [
-    { price: 0.65, quantity: 1200, order_count: 5 },
-    { price: 0.64, quantity: 800, order_count: 3 },
-    { price: 0.63, quantity: 2400, order_count: 8 },
-    { price: 0.62, quantity: 1600, order_count: 4 },
-    { price: 0.61, quantity: 3200, order_count: 12 },
-  ];
+  const { data: bookData } = useQuery({
+    queryKey: ['orderbook', marketId],
+    queryFn: async () => {
+      const book = await apiClient.get<OrderBook>(`/markets/${marketId}/orderbook?outcome=yes`);
+      return book;
+    },
+    staleTime: 5000,
+    refetchInterval: 5000,
+  });
 
-  const mockAsks = [
-    { price: 0.66, quantity: 900, order_count: 4 },
-    { price: 0.67, quantity: 1100, order_count: 5 },
-    { price: 0.68, quantity: 2000, order_count: 7 },
-    { price: 0.69, quantity: 1400, order_count: 6 },
-    { price: 0.70, quantity: 2800, order_count: 10 },
-  ];
+  const bids = bookData?.bids || [];
+  const asks = bookData?.asks || [];
 
   const maxQty = Math.max(
-    ...mockBids.map(b => b.quantity),
-    ...mockAsks.map(a => a.quantity)
+    ...bids.map(b => b.quantity || 0),
+    ...asks.map(a => a.quantity || 0),
+    1
   );
+
+  if (bids.length === 0 && asks.length === 0) {
+    return (
+      <div className="text-center py-4">
+        <Activity className="w-5 h-5 text-gray-700 mx-auto mb-1" />
+        <p className="text-xs text-gray-600">Order book is building up...</p>
+        <p className="text-[10px] text-gray-700">Agents are actively trading this market</p>
+      </div>
+    );
+  }
 
   return (
     <div className="grid grid-cols-2 gap-4">
       <div>
-        <h4 className="text-sm font-medium text-slate-400 mb-2">Bids</h4>
+        <h4 className="text-sm font-medium text-slate-400 mb-2">Bids ({bids.length})</h4>
         <div className="space-y-1">
-          {mockBids.map((bid, i) => (
+          {bids.slice(0, 8).map((bid, i) => (
             <div key={i} className="relative flex items-center justify-between py-1 px-2 rounded text-sm">
               <div className="absolute inset-0 bg-green-500/20 rounded" style={{ width: `${(bid.quantity / maxQty) * 100}%` }} />
               <span className="relative text-green-400 font-mono">{(bid.price * 100).toFixed(0)}¢</span>
@@ -264,9 +272,9 @@ function OrderBookDisplay({ marketId }: { marketId: string }) {
         </div>
       </div>
       <div>
-        <h4 className="text-sm font-medium text-slate-400 mb-2">Asks</h4>
+        <h4 className="text-sm font-medium text-slate-400 mb-2">Asks ({asks.length})</h4>
         <div className="space-y-1">
-          {mockAsks.map((ask, i) => (
+          {asks.slice(0, 8).map((ask, i) => (
             <div key={i} className="relative flex items-center justify-between py-1 px-2 rounded text-sm">
               <div className="absolute inset-0 bg-red-500/20 rounded right-0" style={{ width: `${(ask.quantity / maxQty) * 100}%`, marginLeft: 'auto' }} />
               <span className="relative text-red-400 font-mono">{(ask.price * 100).toFixed(0)}¢</span>
@@ -582,8 +590,8 @@ export default function Markets() {
       params.append('limit', '100');
       return apiClient.get<{ markets: Market[]; total: number }>(`/markets?${params.toString()}`);
     },
-    staleTime: 30_000,
-    refetchInterval: 30_000,
+    staleTime: 10_000,
+    refetchInterval: 10_000,
     retry: 1,
   });
 

@@ -165,3 +165,68 @@ body {
 .market-pulse {
   animation: marketPulse 1.5s ease-out;
 }
+
+/* Grade glow effects */
+@keyframes gradeGlow {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.3); }
+}
+
+.grade-glow {
+  animation: gradeGlow 3s ease-in-out infinite;
+}
+
+/* Smooth text gradient animation */
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.animated-gradient {
+  background-size: 200% auto;
+  animation: gradientShift 4s ease infinite;
+}
+
+/* Landing page hero glow */
+@keyframes heroGlow {
+  0%, 100% { opacity: 0.5; transform: translate(-50%, 0) scale(1); }
+  50% { opacity: 0.8; transform: translate(-50%, 0) scale(1.1); }
+}
+
+.hero-glow {
+  animation: heroGlow 6s ease-in-out infinite;
+}
+
+/* Floating animation for cards */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+.float-subtle {
+  animation: float 4s ease-in-out infinite;
+}
+
+/* Score counter animation */
+@keyframes countUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.count-up {
+  animation: countUp 0.5s ease-out forwards;
+}
+
+/* Smooth scroll */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Landing page specific */
+.landing-grid {
+  background-image: 
+    linear-gradient(rgba(6, 182, 212, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(6, 182, 212, 0.03) 1px, transparent 1px);
+  background-size: 60px 60px;
+}

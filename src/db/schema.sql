@@ -704,6 +704,152 @@ WHERE a.status = 'active'
 ORDER BY a.truth_score DESC, a.total_pnl DESC;
 
 -- ============================================================================
+-- API KEYS TABLE
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS api_keys (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    key_hash        VARCHAR(128) NOT NULL UNIQUE,
+    key_prefix      VARCHAR(32) NOT NULL,
+    user_id         UUID NOT NULL REFERENCES users(id),
+    name            VARCHAR(100) NOT NULL,
+    tier            VARCHAR(20) NOT NULL DEFAULT 'free' CHECK (tier IN ('free', 'developer', 'pro', 'enterprise')),
+    daily_limit     INTEGER NOT NULL DEFAULT 100,
+    calls_today     INTEGER NOT NULL DEFAULT 0,
+    last_reset_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    scopes          TEXT[] NOT NULL DEFAULT '{}',
+    active          BOOLEAN NOT NULL DEFAULT TRUE,
+    last_used_at    TIMESTAMPTZ,
+    expires_at      TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_api_keys_user ON api_keys(user_id);
+CREATE INDEX idx_api_keys_hash ON api_keys(key_hash) WHERE active = TRUE;
+
+-- API key usage logs
+CREATE TABLE IF NOT EXISTS api_key_usage (
+    id              BIGSERIAL PRIMARY KEY,
+    api_key_id      UUID NOT NULL REFERENCES api_keys(id),
+    endpoint        VARCHAR(255) NOT NULL,
+    response_time   INTEGER, -- ms
+    status_code     INTEGER,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_api_usage_key ON api_key_usage(api_key_id);
+CREATE INDEX idx_api_usage_date ON api_key_usage(created_at);
+
+-- ============================================================================
+-- MARKETPLACE LISTINGS TABLE
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS marketplace_listings (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    agent_id        UUID NOT NULL REFERENCES agents(id),
+    title           VARCHAR(200) NOT NULL,
+    description     TEXT,
+    category        VARCHAR(50) NOT NULL,
+    pricing_type    VARCHAR(20) NOT NULL CHECK (pricing_type IN ('free', 'per_call', 'monthly', 'custom')),
+    pricing_amount  DECIMAL(12,2) DEFAULT 0,
+    response_time   VARCHAR(20),
+    api_endpoint    BOOLEAN DEFAULT FALSE,
+    mcp_compatible  BOOLEAN DEFAULT FALSE,
+    featured        BOOLEAN DEFAULT FALSE,
+    active          BOOLEAN DEFAULT TRUE,
+    hired_count     INTEGER DEFAULT 0,
+    avg_rating      DECIMAL(3,2) DEFAULT 0,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_marketplace_category ON marketplace_listings(category) WHERE active = TRUE;
+CREATE INDEX idx_marketplace_featured ON marketplace_listings(featured) WHERE active = TRUE AND featured = TRUE;
+
+-- Marketplace hires (transactions)
+CREATE TABLE IF NOT EXISTS marketplace_hires (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    listing_id      UUID NOT NULL REFERENCES marketplace_listings(id),
+    buyer_user_id   UUID NOT NULL REFERENCES users(id),
+    status          VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'completed', 'cancelled')),
+    rating          INTEGER CHECK (rating >= 1 AND rating <= 5),
+    review          TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ============================================================================
+-- WEBHOOK SUBSCRIPTIONS
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS webhook_subscriptions (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id         UUID NOT NULL REFERENCES users(id),
+    url             TEXT NOT NULL,
+    events          TEXT[] NOT NULL,                      -- Array of event types
+    secret          VARCHAR(64) NOT NULL,                 -- HMAC signing secret
+    active          BOOLEAN DEFAULT TRUE,
+    failure_count   INTEGER DEFAULT 0,
+    last_triggered  TIMESTAMPTZ,
+    last_failure    TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_webhook_user ON webhook_subscriptions(user_id) WHERE active = TRUE;
+
+-- Webhook delivery log
+CREATE TABLE IF NOT EXISTS webhook_deliveries (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    webhook_id      UUID NOT NULL REFERENCES webhook_subscriptions(id) ON DELETE CASCADE,
+    event           VARCHAR(100) NOT NULL,
+    payload         JSONB NOT NULL,
+    status_code     INTEGER,
+    success         BOOLEAN DEFAULT FALSE,
+    response_time   INTEGER,                              -- milliseconds
+    attempted_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_webhook_delivery_webhook ON webhook_deliveries(webhook_id);
+
+-- ============================================================================
+-- BENCHMARK REQUESTS
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS benchmark_requests (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id         UUID NOT NULL REFERENCES users(id),
+    agent_name      VARCHAR(200) NOT NULL,
+    agent_endpoint  TEXT NOT NULL,
+    protocol        VARCHAR(10) NOT NULL DEFAULT 'rest' CHECK (protocol IN ('rest', 'mcp', 'a2a')),
+    categories      TEXT[] NOT NULL,
+    depth           VARCHAR(20) NOT NULL DEFAULT 'quick' CHECK (depth IN ('quick', 'standard', 'comprehensive')),
+    market_count    INTEGER NOT NULL,
+    status          VARCHAR(20) NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'running', 'completed', 'failed')),
+    progress        INTEGER DEFAULT 0 CHECK (progress >= 0 AND progress <= 100),
+    results         JSONB,                                -- Full results JSON
+    started_at      TIMESTAMPTZ,
+    completed_at    TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_benchmark_user ON benchmark_requests(user_id);
+CREATE INDEX idx_benchmark_status ON benchmark_requests(status) WHERE status IN ('queued', 'running');
+
+-- ============================================================================
+-- NOTIFICATION PREFERENCES
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS notification_preferences (
+    user_id             UUID PRIMARY KEY REFERENCES users(id),
+    grade_changes       BOOLEAN DEFAULT TRUE,
+    new_certifications  BOOLEAN DEFAULT TRUE,
+    market_resolutions  BOOLEAN DEFAULT FALSE,
+    weekly_digest       BOOLEAN DEFAULT TRUE,
+    api_usage_alerts    BOOLEAN DEFAULT TRUE,
+    benchmark_complete  BOOLEAN DEFAULT TRUE,
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ============================================================================
 -- SEED DATA FOR TESTING
 -- ============================================================================
 
