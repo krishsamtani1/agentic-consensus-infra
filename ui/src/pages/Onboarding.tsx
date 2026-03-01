@@ -112,7 +112,7 @@ export default function Onboarding() {
     if (fundingChoice === 'demo') {
       try {
         const userId = user?.id || 'demo-user';
-        await fetch(`${API_BASE}/payments/demo-credit`, {
+        await fetch(`${API_BASE}/v1/payments/demo-credit`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId, amount: 10000 }),
@@ -129,7 +129,7 @@ export default function Onboarding() {
         const template = AGENT_TEMPLATES.find(t => t.id === agentId);
         if (template) {
           try {
-            await fetch(`${API_BASE}/governance/agents`, {
+            await fetch(`${API_BASE}/v1/governance/agents`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({

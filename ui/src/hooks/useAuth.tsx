@@ -86,7 +86,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchBalance = async (token: string, userId: string) => {
     try {
-      const resp = await fetch(`${API_BASE}/auth/me`, {
+      const resp = await fetch(`${API_BASE}/v1/auth/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (resp.ok) {
@@ -101,7 +101,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const login = useCallback(async (email: string, password: string) => {
-    const resp = await fetch(`${API_BASE}/auth/login`, {
+    const resp = await fetch(`${API_BASE}/v1/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
@@ -126,7 +126,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const register = useCallback(async (email: string, password: string, displayName?: string) => {
-    const resp = await fetch(`${API_BASE}/auth/register`, {
+    const resp = await fetch(`${API_BASE}/v1/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password, displayName }),
@@ -172,7 +172,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!state.user || !state.token) return;
 
     try {
-      await fetch(`${API_BASE}/auth/onboard`, {
+      await fetch(`${API_BASE}/v1/auth/onboard`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

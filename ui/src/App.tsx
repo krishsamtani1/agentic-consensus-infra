@@ -1,14 +1,12 @@
 import { lazy, Suspense } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { NotificationProvider } from './components/NotificationCenter';
 import Layout from './components/Layout';
 
-// Eagerly loaded (critical path)
 import Landing from './pages/Landing';
 import Onboarding from './pages/Onboarding';
 
-// Code-split pages (lazy loaded)
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Markets = lazy(() => import('./pages/Markets'));
 const Agents = lazy(() => import('./pages/Agents'));
@@ -53,9 +51,22 @@ function NotFound() {
   );
 }
 
-function AppRoutes() {
+function RequireAuth() {
   const { isAuthenticated, isLoading } = useAuth();
+  if (isLoading) return <PageLoader />;
+  if (!isAuthenticated) return <Navigate to="/onboarding" replace />;
+  return <Layout />;
+}
 
+function GuestOnly({ children }: { children: React.ReactElement }) {
+  const { isAuthenticated, isLoading } = useAuth();
+  if (isLoading) return <PageLoader />;
+  if (isAuthenticated) return <Navigate to="/dashboard" replace />;
+  return children;
+}
+
+function RootRedirect() {
+  const { isAuthenticated, isLoading } = useAuth();
   if (isLoading) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
@@ -66,48 +77,40 @@ function AppRoutes() {
       </div>
     );
   }
+  return isAuthenticated ? <Navigate to="/dashboard" replace /> : <Landing />;
+}
 
+function AppRoutes() {
   return (
     <Suspense fallback={<PageLoader />}>
       <Routes>
-        {/* Fully public routes — no auth, no layout */}
+        {/* Public routes -- always mounted, no auth required */}
         <Route path="/public/leaderboard" element={<PublicLeaderboard />} />
         <Route path="/public/agent/:agentId" element={<PublicAgentProfile />} />
         <Route path="/battles" element={<Battles />} />
         <Route path="/embed/badge/:agentId" element={<EmbedBadge />} />
         <Route path="/research" element={<Research />} />
 
-        {/* Onboarding */}
-        <Route path="/onboarding" element={
-          isAuthenticated ? <Navigate to="/dashboard" replace /> : <Onboarding />
-        } />
+        {/* Guest-only routes */}
+        <Route path="/onboarding" element={<GuestOnly><Onboarding /></GuestOnly>} />
 
-        {/* Landing page — unauthenticated root */}
-        {!isAuthenticated && (
-          <Route path="/" element={<Landing />} />
-        )}
+        {/* Root: landing or redirect to dashboard */}
+        <Route path="/" element={<RootRedirect />} />
 
-        {/* Authenticated app shell */}
-        {isAuthenticated ? (
-          <Route path="/" element={<Layout />}>
-            <Route path="dashboard" element={<Dashboard />} />
-            <Route index element={<Navigate to="/dashboard" replace />} />
-            <Route path="markets" element={<Markets />} />
-            <Route path="agents" element={<Agents />} />
-            <Route path="agents/:agentId" element={<AgentProfile />} />
-            <Route path="leaderboard" element={<Leaderboard />} />
-            <Route path="marketplace" element={<Marketplace />} />
-            <Route path="compare" element={<Compare />} />
-            <Route path="benchmark" element={<Benchmark />} />
-            <Route path="api-docs" element={<ApiDocs />} />
-            <Route path="settings" element={<Settings />} />
-            <Route path="research" element={<Research />} />
-            <Route path="*" element={<NotFound />} />
-          </Route>
-        ) : (
-          /* Unauthenticated catch-all — show landing page */
-          <Route path="*" element={<Landing />} />
-        )}
+        {/* Authenticated app shell -- all nav tabs stay mounted */}
+        <Route element={<RequireAuth />}>
+          <Route path="dashboard" element={<Dashboard />} />
+          <Route path="markets" element={<Markets />} />
+          <Route path="agents" element={<Agents />} />
+          <Route path="agents/:agentId" element={<AgentProfile />} />
+          <Route path="leaderboard" element={<Leaderboard />} />
+          <Route path="marketplace" element={<Marketplace />} />
+          <Route path="compare" element={<Compare />} />
+          <Route path="benchmark" element={<Benchmark />} />
+          <Route path="api-docs" element={<ApiDocs />} />
+          <Route path="settings" element={<Settings />} />
+          <Route path="*" element={<NotFound />} />
+        </Route>
       </Routes>
     </Suspense>
   );

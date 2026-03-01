@@ -157,6 +157,16 @@ async function registerRoutes() {
   // Health & status routes
   await fastify.register(healthRoutes);
 
+  // A2A Discovery at root (RFC 8615: /.well-known/agent.json)
+  fastify.get('/.well-known/agent.json', async (_request, reply) => {
+    const { A2ADiscoveryService } = await import('./a2a/AgentDiscovery.js');
+    const discovery = new A2ADiscoveryService(eventBus);
+    reply.header('Content-Type', 'application/json');
+    reply.header('Access-Control-Allow-Origin', '*');
+    reply.header('Cache-Control', 'public, max-age=3600');
+    return reply.send(discovery.getMasterAgentJson());
+  });
+
   // V1 API routes
   await fastify.register(async (app) => {
     // Agent management

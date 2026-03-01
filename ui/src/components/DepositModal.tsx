@@ -27,7 +27,7 @@ export default function DepositModal({ onClose }: { onClose: () => void }) {
     setResult(null);
 
     try {
-      const resp = await fetch(`${API_BASE}/payments/create-checkout`, {
+      const resp = await fetch(`${API_BASE}/v1/payments/create-checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ amount: effectiveAmount, userId: user.id }),
@@ -53,7 +53,7 @@ export default function DepositModal({ onClose }: { onClose: () => void }) {
     setResult(null);
 
     try {
-      const resp = await fetch(`${API_BASE}/payments/demo-credit`, {
+      const resp = await fetch(`${API_BASE}/v1/payments/demo-credit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user.id, amount: effectiveAmount }),
