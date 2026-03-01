@@ -84,16 +84,16 @@ function LiveActivityTicker() {
   useEffect(() => {
     async function loadEvents() {
       try {
-        const res = await fetch(`${API_BASE}/v1/ratings/leaderboard?limit=5`);
+        const res = await fetch(`${API_BASE}/v1/ratings/leaderboard?limit=5&include_unrated=true`);
         if (res.ok) {
           const data = await res.json();
           if (data.success && data.data.leaderboard.length > 0) {
             const lb = data.data.leaderboard;
             const liveEvents = lb.map((a: any, i: number) => ({
-              agent: a.agent_id.slice(0, 12),
+              agent: a.agent_id.replace('agent-', '').replace(/-001$/, ''),
               action: a.total_trades > 0 ? 'scored' : 'joined at',
               market: `TruthScore ${a.truth_score} (${a.grade})`,
-              confidence: `${a.win_rate}% win rate`,
+              confidence: a.total_trades > 0 ? `${a.win_rate}% win rate` : '',
               time: 'live',
               type: i === 0 ? 'certification' : 'prediction',
             }));
@@ -150,7 +150,7 @@ function HeroSection() {
   useEffect(() => {
     async function loadLeaderboard() {
       try {
-        const res = await fetch(`${API_BASE}/v1/ratings/leaderboard?limit=5`);
+        const res = await fetch(`${API_BASE}/v1/ratings/leaderboard?limit=5&include_unrated=true`);
         if (res.ok) {
           const data = await res.json();
           if (data.success && data.data.leaderboard.length > 0) {

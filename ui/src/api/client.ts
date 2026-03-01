@@ -1,4 +1,6 @@
 // Use env var for production, fallback to /api for dev (Vite proxy)
+// Vite proxy: /api/* -> localhost:3000/* (strips /api prefix)
+// Backend routes are under /v1, so all paths should include /v1
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 export interface APIResponse<T> {
@@ -16,7 +18,8 @@ async function request<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const url = `${API_BASE}${endpoint}`;
+  const path = endpoint.startsWith('/v1') ? endpoint : `/v1${endpoint}`;
+  const url = `${API_BASE}${path}`;
   
   // Include auth token if available
   const token = localStorage.getItem('truthnet_token');
@@ -233,7 +236,10 @@ export interface HealthStatus {
 }
 
 export const healthAPI = {
-  check: () => request<HealthStatus>('/health'),
+  check: () => {
+    const url = `${API_BASE}/health`;
+    return fetch(url).then(r => r.json()).then(d => d.data as HealthStatus);
+  },
 };
 
 // ============================================================================
