@@ -178,20 +178,15 @@ export function createWebhookRoutes(eventBus: EventBus) {
       });
     });
 
-    // GET /webhooks/:userId - List user's webhooks
-    fastify.get('/webhooks/:userId', async (
-      request: FastifyRequest<{ Params: { userId: string } }>,
-      reply: FastifyReply
-    ) => {
-      const { userId } = request.params;
-      const userWebhooks = Array.from(webhooks.values())
-        .filter(w => w.userId === userId)
-        .map(({ secret, ...rest }) => rest); // Don't expose secret
-
-      return reply.send({ success: true, data: { webhooks: userWebhooks } });
+    // GET /webhooks/events - List available events (MUST be before :userId param route)
+    fastify.get('/webhooks/events', async (_request, reply) => {
+      return reply.send({
+        success: true,
+        data: { events: WEBHOOK_EVENTS },
+      });
     });
 
-    // GET /webhooks/deliveries/:webhookId - Delivery history
+    // GET /webhooks/deliveries/:webhookId - Delivery history (MUST be before :userId param route)
     fastify.get('/webhooks/deliveries/:webhookId', async (
       request: FastifyRequest<{ Params: { webhookId: string } }>,
       reply: FastifyReply
@@ -202,6 +197,19 @@ export function createWebhookRoutes(eventBus: EventBus) {
         .slice(-50);
 
       return reply.send({ success: true, data: { deliveries: history } });
+    });
+
+    // GET /webhooks/:userId - List user's webhooks (param route AFTER static routes)
+    fastify.get('/webhooks/:userId', async (
+      request: FastifyRequest<{ Params: { userId: string } }>,
+      reply: FastifyReply
+    ) => {
+      const { userId } = request.params;
+      const userWebhooks = Array.from(webhooks.values())
+        .filter(w => w.userId === userId)
+        .map(({ secret, ...rest }) => rest);
+
+      return reply.send({ success: true, data: { webhooks: userWebhooks } });
     });
 
     // DELETE /webhooks/:webhookId - Delete a webhook
@@ -244,12 +252,5 @@ export function createWebhookRoutes(eventBus: EventBus) {
       });
     });
 
-    // GET /webhooks/events - List available events
-    fastify.get('/webhooks/events', async (_request, reply) => {
-      return reply.send({
-        success: true,
-        data: { events: WEBHOOK_EVENTS },
-      });
-    });
   };
 }

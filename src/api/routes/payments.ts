@@ -63,10 +63,10 @@ const PLANS = {
 
 export function createPaymentRoutes(escrow: EscrowLedger, eventBus: EventBus) {
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_placeholder', {
-    apiVersion: '2025-12-18.acacia' as any,
+    apiVersion: '2024-12-18.acacia' as any,
   });
 
-  const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+  const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:4000';
   const DEPOSIT_PRESETS = [10, 50, 100, 500];
 
   return async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
@@ -141,9 +141,21 @@ export function createPaymentRoutes(escrow: EscrowLedger, eventBus: EventBus) {
     // -----------------------------------------------------------------------
     // POST /payments/webhook - Stripe Webhook Handler
     // -----------------------------------------------------------------------
-    fastify.post('/payments/webhook', {
-      config: { rawBody: true },
-    }, async (request: FastifyRequest, reply: FastifyReply) => {
+    fastify.addContentTypeParser(
+      'application/json',
+      { parseAs: 'string', bodyLimit: 1048576 },
+      (_req: any, body: string, done: (err: Error | null, body?: any) => void) => {
+        try { done(null, JSON.parse(body)); } catch (e: any) { done(null, body); }
+      }
+    );
+
+    fastify.addHook('preHandler', async (request: any) => {
+      if (typeof request.body === 'string') {
+        (request as any).rawBody = request.body;
+      }
+    });
+
+    fastify.post('/payments/webhook', async (request: FastifyRequest, reply: FastifyReply) => {
       const sig = request.headers['stripe-signature'] as string;
       const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
@@ -151,13 +163,9 @@ export function createPaymentRoutes(escrow: EscrowLedger, eventBus: EventBus) {
 
       try {
         if (webhookSecret && sig) {
-          event = stripe.webhooks.constructEvent(
-            request.body as string,
-            sig,
-            webhookSecret
-          );
+          const rawBody = (request as any).rawBody || JSON.stringify(request.body);
+          event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
         } else {
-          // Dev mode - parse directly
           event = request.body as Stripe.Event;
         }
       } catch (err: any) {
@@ -368,8 +376,14 @@ export function createPaymentRoutes(escrow: EscrowLedger, eventBus: EventBus) {
 
       withdrawalRequests.set(id, withdrawal);
 
-      // Lock funds for pending withdrawal
-      await escrow.lock(userId, amount, 'withdrawal', id);
+      const lockResult = await escrow.lock(userId, amount, 'withdrawal', id);
+      if (lockResult && !lockResult.success) {
+        withdrawalRequests.delete(id);
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'LOCK_FAILED', message: lockResult.error || 'Could not lock funds' },
+        });
+      }
 
       eventBus.publish('payment.withdrawal.requested', {
         id,

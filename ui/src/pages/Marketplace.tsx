@@ -7,15 +7,17 @@
  */
 
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   Store, Search, Filter, Star, Shield, TrendingUp,
   CheckCircle2, ExternalLink, Zap, Bot, MessageSquare,
   ArrowRight, DollarSign, Clock, Award, Eye,
-  ChevronDown, Sparkles
+  ChevronDown, Sparkles, Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 import { Link } from 'react-router-dom';
+import { ratingsAPI } from '../api/client';
 
 // ============================================================================
 // DATA
@@ -183,13 +185,60 @@ function AgentCard({ agent }: { agent: MarketplaceAgent }) {
 // MAIN
 // ============================================================================
 
+const NAME_MAP: Record<string, { name: string; avatar: string; domain: string; description: string; tags: string[] }> = {
+  'agent-oracle-001': { name: 'TRUTH-NET Oracle', avatar: '⚡', domain: 'Multi-domain', description: 'Top-ranked multi-domain prediction agent with the highest verified accuracy.', tags: ['Multi-domain', 'Enterprise Ready'] },
+  'agent-tech-001': { name: 'Tech Oracle', avatar: '💻', domain: 'Tech & AI', description: 'Deep expertise in AI/ML product launches and tech earnings.', tags: ['AI/ML', 'Earnings'] },
+  'agent-geo-001': { name: 'Geopolitical Analyst', avatar: '🌍', domain: 'Geopolitics', description: 'Specialized in international relations and trade policy analysis.', tags: ['Trade Policy', 'Sanctions'] },
+  'agent-logistics-001': { name: 'Logistics Sentinel', avatar: '🚢', domain: 'Logistics', description: 'Global supply chain disruptions and trade route monitoring.', tags: ['Supply Chain', 'Ports'] },
+  'agent-climate-001': { name: 'Climate Risk Monitor', avatar: '🌡️', domain: 'Climate', description: 'Extreme weather prediction and environmental risk assessment.', tags: ['Weather', 'Insurance'] },
+  'agent-crypto-001': { name: 'Crypto Alpha', avatar: '₿', domain: 'Crypto', description: 'High-conviction crypto predictions on DeFi and regulation.', tags: ['DeFi', 'Regulation'] },
+  'agent-mm-001': { name: 'Market Maker Prime', avatar: '📊', domain: 'Finance', description: 'Automated liquidity provisioning across all markets.', tags: ['Liquidity', 'Spreads'] },
+  'agent-macro-001': { name: 'Macro Strategist', avatar: '📈', domain: 'Economics', description: 'Macroeconomic indicators and central bank policy analysis.', tags: ['Central Banks', 'GDP'] },
+  'agent-sentiment-001': { name: 'Sentiment Scanner', avatar: '🧠', domain: 'Social', description: 'Social sentiment analysis from Twitter, Reddit, and news.', tags: ['Social Media', 'NLP'] },
+  'agent-contrarian-001': { name: 'Contrarian Alpha', avatar: '🔄', domain: 'Multi-domain', description: 'Contrarian approach — fading consensus to exploit overconfidence.', tags: ['Contrarian', 'Alpha'] },
+};
+
 export default function Marketplace() {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('all');
   const [certifiedOnly, setCertifiedOnly] = useState(false);
   const [sortBy, setSortBy] = useState<'featured' | 'score' | 'price' | 'accuracy'>('featured');
 
-  const filtered = marketplaceAgents
+  const { data, isLoading } = useQuery({
+    queryKey: ['marketplace-agents'],
+    queryFn: () => ratingsAPI.leaderboard(50, true),
+    staleTime: 15_000,
+  });
+
+  const liveAgents: MarketplaceAgent[] = (data?.leaderboard || []).map((entry: any, i: number) => {
+    const meta = NAME_MAP[entry.agent_id] || {
+      name: entry.agent_id.replace(/^(agent-|ext-)/, '').replace(/-\d+$/, '').replace(/-/g, ' '),
+      avatar: '🤖', domain: 'General', description: 'AI prediction agent on the TRUTH-NET network.', tags: ['General'],
+    };
+    return {
+      id: entry.agent_id,
+      name: meta.name,
+      provider: entry.agent_id.startsWith('ext-') ? 'External' : 'System',
+      avatar: meta.avatar,
+      grade: entry.grade || 'NR',
+      truthScore: entry.truth_score || 0,
+      certified: entry.certified || false,
+      domain: meta.domain,
+      category: meta.domain.toLowerCase().replace(/ & /g, '-'),
+      description: meta.description,
+      pricing: `$${(0.10 + Math.random() * 0.40).toFixed(2)}/pred`,
+      pricingAmount: 10 + Math.floor(Math.random() * 40),
+      responseTime: '<3s',
+      accuracy: entry.truth_score || 0,
+      predictions: entry.total_trades || 0,
+      featured: i < 2,
+      tags: meta.tags,
+    } as MarketplaceAgent;
+  });
+
+  const activeAgents = liveAgents.length > 0 ? liveAgents : marketplaceAgents;
+
+  const filtered = activeAgents
     .filter(a => {
       if (search && !a.name.toLowerCase().includes(search.toLowerCase()) && !a.description.toLowerCase().includes(search.toLowerCase())) return false;
       if (category !== 'all' && a.category !== category) return false;

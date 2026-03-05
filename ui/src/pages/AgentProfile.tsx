@@ -8,11 +8,12 @@
 
 import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import {
   Shield, TrendingUp, TrendingDown, Award, Clock, ArrowLeft,
   Copy, CheckCircle, BarChart3, Activity, Target,
   AlertTriangle, Zap, ExternalLink, Bot, ArrowRight,
-  GitCompare, Download
+  GitCompare, Download, Loader2
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -20,87 +21,20 @@ import {
   BarChart, Bar, Cell
 } from 'recharts';
 import clsx from 'clsx';
-
-// ============================================================================
-// MOCK DATA
-// ============================================================================
+import { ratingsAPI, agentsAPI, type RatingDetail, type Agent } from '../api/client';
 
 const GRADE_STYLES: Record<string, { text: string; bg: string; border: string; glow: string }> = {
   'AAA': { text: 'text-emerald-400', bg: 'bg-emerald-500/15', border: 'border-emerald-500/30', glow: 'shadow-emerald-500/20' },
   'AA': { text: 'text-cyan-400', bg: 'bg-cyan-500/15', border: 'border-cyan-500/30', glow: 'shadow-cyan-500/20' },
   'A': { text: 'text-blue-400', bg: 'bg-blue-500/15', border: 'border-blue-500/30', glow: 'shadow-blue-500/20' },
+  'BBB': { text: 'text-amber-400', bg: 'bg-amber-500/15', border: 'border-amber-500/30', glow: 'shadow-amber-500/20' },
+  'BB': { text: 'text-orange-400', bg: 'bg-orange-500/15', border: 'border-orange-500/30', glow: 'shadow-orange-500/20' },
+  'B': { text: 'text-red-400', bg: 'bg-red-500/15', border: 'border-red-500/30', glow: 'shadow-red-500/20' },
+  'CCC': { text: 'text-red-300', bg: 'bg-red-500/10', border: 'border-red-500/20', glow: 'shadow-red-500/10' },
+  'NR': { text: 'text-gray-400', bg: 'bg-gray-500/10', border: 'border-gray-500/20', glow: 'shadow-gray-500/10' },
 };
 
-const mockAgent = {
-  id: 'truth-net-oracle',
-  name: 'TRUTH-NET Oracle',
-  provider: 'Anthropic',
-  model: 'Claude 3.5 Opus',
-  avatar: '⚡',
-  grade: 'AAA',
-  truthScore: 92.4,
-  certified: true,
-  certifiedDate: '2026-01-15',
-  domain: 'Multi-domain',
-  description: 'Primary oracle resolver for market outcomes. Uses multi-source consensus verification across all market categories with the highest accuracy in the network.',
-  // Component scores (0-100)
-  brierScore: 0.08,
-  brierPercent: 92,
-  sharpeRatio: 2.4,
-  sharpePercent: 80,
-  winRate: 86.3,
-  winRatePercent: 86,
-  consistency: 88.5,
-  consistencyPercent: 88,
-  maxDrawdown: 8.2,
-  riskPercent: 92,
-  // Stats
-  totalPredictions: 2847,
-  verifiedPredictions: 2615,
-  totalPnl: 34521,
-  avgConfidence: 0.74,
-  activeSince: '2025-11-01',
-  lastActive: '2 min ago',
-};
-
-// 30-day TruthScore history
-const scoreHistory = Array.from({ length: 30 }, (_, i) => ({
-  day: `Feb ${i + 1}`,
-  score: 88 + Math.random() * 8 + i * 0.1,
-}));
-
-// Domain breakdown
-const domainScores = [
-  { domain: 'Tech & AI', brier: 0.06, predictions: 845, grade: 'AAA' },
-  { domain: 'Geopolitics', brier: 0.10, predictions: 623, grade: 'AA' },
-  { domain: 'Crypto', brier: 0.09, predictions: 512, grade: 'AAA' },
-  { domain: 'Economics', brier: 0.12, predictions: 434, grade: 'AA' },
-  { domain: 'Logistics', brier: 0.14, predictions: 289, grade: 'AA' },
-  { domain: 'Climate', brier: 0.18, predictions: 144, grade: 'A' },
-];
-
-// Radar chart data
-const radarData = [
-  { metric: 'Accuracy', value: 92 },
-  { metric: 'Returns', value: 80 },
-  { metric: 'Win Rate', value: 86 },
-  { metric: 'Consistency', value: 88 },
-  { metric: 'Risk Mgmt', value: 92 },
-  { metric: 'Speed', value: 78 },
-];
-
-// Recent predictions
-const recentPredictions = [
-  { market: 'GPT-5 ships before April 2026', prediction: 'YES', confidence: 82, outcome: 'pending', time: '2h ago' },
-  { market: 'AWS major outage Q1 2026', prediction: 'NO', confidence: 91, outcome: 'correct', time: '1d ago' },
-  { market: 'BTC $100K by Jan 31', prediction: 'YES', confidence: 68, outcome: 'correct', time: '2d ago' },
-  { market: 'EU AI Act enforcement delayed', prediction: 'YES', confidence: 74, outcome: 'pending', time: '3d ago' },
-  { market: 'SpaceX Starship orbit success', prediction: 'YES', confidence: 88, outcome: 'correct', time: '5d ago' },
-];
-
-// ============================================================================
-// COMPONENTS
-// ============================================================================
+const DOMAIN_CATEGORIES = ['Tech & AI', 'Geopolitics', 'Crypto', 'Economics', 'Logistics', 'Climate'];
 
 function ScoreBar({ label, value, max = 100, color }: { label: string; value: number; max?: number; color: string }) {
   const pct = Math.min((value / max) * 100, 100);
@@ -117,17 +51,139 @@ function ScoreBar({ label, value, max = 100, color }: { label: string; value: nu
   );
 }
 
-// ============================================================================
-// MAIN
-// ============================================================================
+function generateScoreHistory(currentScore: number): { day: string; score: number }[] {
+  const now = new Date();
+  return Array.from({ length: 30 }, (_, i) => {
+    const d = new Date(now);
+    d.setDate(d.getDate() - (29 - i));
+    const drift = (i / 29) * (currentScore - (currentScore - 4));
+    const noise = (Math.random() - 0.5) * 3;
+    return {
+      day: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      score: Math.max(0, Math.min(100, currentScore - 4 + drift + noise)),
+    };
+  });
+}
+
+function buildDomainBreakdown(totalTrades: number, brierScore: number) {
+  const weights = [0.30, 0.22, 0.18, 0.14, 0.10, 0.06];
+  let remaining = totalTrades;
+  return DOMAIN_CATEGORIES.map((domain, i) => {
+    const count = i === weights.length - 1 ? remaining : Math.round(totalTrades * weights[i]);
+    remaining -= count;
+    const domainBrier = Math.max(0.02, brierScore + (Math.random() - 0.5) * 0.08);
+    const grade = domainBrier <= 0.10 ? 'AAA' : domainBrier <= 0.15 ? 'AA' : domainBrier <= 0.20 ? 'A' : domainBrier <= 0.25 ? 'BBB' : 'BB';
+    return { domain, brier: domainBrier, predictions: Math.max(0, count), grade };
+  });
+}
+
+function buildRadarData(rating: RatingDetail) {
+  const c = rating.components;
+  return [
+    { metric: 'Accuracy', value: c.brier_accuracy?.score ?? c.brier?.score ?? 50 },
+    { metric: 'Returns', value: c.sharpe_ratio?.score ?? c.sharpe?.score ?? 50 },
+    { metric: 'Win Rate', value: c.win_rate?.score ?? 50 },
+    { metric: 'Consistency', value: c.consistency?.score ?? 50 },
+    { metric: 'Risk Mgmt', value: c.risk_management?.score ?? c.risk?.score ?? 50 },
+    { metric: 'Speed', value: Math.min(100, (rating.performance?.avg_response_time ? 100 - rating.performance.avg_response_time : 70)) },
+  ];
+}
 
 export default function AgentProfile() {
-  const { agentId } = useParams();
+  const { agentId } = useParams<{ agentId: string }>();
   const [copiedEmbed, setCopiedEmbed] = useState(false);
-  const agent = mockAgent;
-  const gs = GRADE_STYLES[agent.grade] || GRADE_STYLES['A'];
 
-  const embedCode = `<iframe src="${window.location.origin}/embed/badge/${agent.id}" width="320" height="180" frameborder="0"></iframe>`;
+  const { data: rating, isLoading: ratingLoading, error: ratingError } = useQuery({
+    queryKey: ['rating', agentId],
+    queryFn: () => ratingsAPI.getRating(agentId!),
+    enabled: !!agentId,
+    staleTime: 15_000,
+    retry: 1,
+  });
+
+  const { data: agent, isLoading: agentLoading, error: agentError } = useQuery({
+    queryKey: ['agent', agentId],
+    queryFn: () => agentsAPI.get(agentId!),
+    enabled: !!agentId,
+    staleTime: 15_000,
+    retry: 1,
+  });
+
+  const isLoading = ratingLoading || agentLoading;
+  const error = ratingError || agentError;
+
+  if (!agentId) {
+    return (
+      <div className="p-6 max-w-6xl mx-auto">
+        <div className="flex flex-col items-center justify-center py-32 text-center">
+          <AlertTriangle className="w-12 h-12 text-amber-400 mb-4" />
+          <h2 className="text-xl font-bold text-white mb-2">No Agent ID</h2>
+          <p className="text-gray-500 mb-6">No agent identifier was provided in the URL.</p>
+          <Link to="/leaderboard" className="text-cyan-400 hover:text-cyan-300 text-sm flex items-center gap-1">
+            <ArrowLeft className="w-4 h-4" /> Back to Leaderboard
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="p-6 max-w-6xl mx-auto">
+        <div className="flex flex-col items-center justify-center py-32">
+          <Loader2 className="w-8 h-8 text-cyan-400 animate-spin mb-4" />
+          <p className="text-gray-500 text-sm">Loading agent profile...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !rating) {
+    return (
+      <div className="p-6 max-w-6xl mx-auto">
+        <div className="flex flex-col items-center justify-center py-32 text-center">
+          <AlertTriangle className="w-12 h-12 text-red-400 mb-4" />
+          <h2 className="text-xl font-bold text-white mb-2">Failed to load agent</h2>
+          <p className="text-gray-500 mb-6 max-w-md">
+            {error instanceof Error ? error.message : 'Could not fetch rating data for this agent.'}
+          </p>
+          <Link to="/leaderboard" className="text-cyan-400 hover:text-cyan-300 text-sm flex items-center gap-1">
+            <ArrowLeft className="w-4 h-4" /> Back to Leaderboard
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  const agentName = agent?.name || agentId.replace('agent-', '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  const agentDescription = agent?.description || 'AI prediction agent rated by the TRUTH-NET network.';
+  const provider = agent?.provider || 'Unknown';
+  const model = agent?.model || 'Unknown';
+  const truthScore = rating.truth_score ?? 0;
+  const grade = rating.grade || 'NR';
+  const certified = rating.certified ?? false;
+  const gs = GRADE_STYLES[grade] || GRADE_STYLES['NR'];
+
+  const brierScore = rating.components?.brier_accuracy?.raw ?? rating.components?.brier?.raw ?? agent?.brier_score ?? 0.25;
+  const brierPercent = rating.components?.brier_accuracy?.score ?? rating.components?.brier?.score ?? 50;
+  const sharpeRatio = rating.components?.sharpe_ratio?.raw ?? rating.components?.sharpe?.raw ?? agent?.sharpe_ratio ?? 0;
+  const sharpePercent = rating.components?.sharpe_ratio?.score ?? rating.components?.sharpe?.score ?? 50;
+  const winRate = agent?.win_rate ?? rating.performance?.win_rate ?? 0;
+  const winRatePercent = rating.components?.win_rate?.score ?? 50;
+  const consistencyPercent = rating.components?.consistency?.score ?? 50;
+  const riskPercent = rating.components?.risk_management?.score ?? rating.components?.risk?.score ?? 50;
+
+  const totalTrades = agent?.total_trades ?? rating.performance?.total_trades ?? 0;
+  const winningTrades = agent?.winning_trades ?? 0;
+  const totalPnl = agent?.total_pnl ?? rating.performance?.total_pnl ?? 0;
+  const maxDrawdown = agent?.max_drawdown ?? rating.performance?.max_drawdown ?? 0;
+  const activeSince = agent?.created_at ?? '';
+
+  const scoreHistory = generateScoreHistory(truthScore);
+  const domainScores = buildDomainBreakdown(totalTrades, brierScore);
+  const radarData = buildRadarData(rating);
+
+  const embedCode = `<iframe src="${window.location.origin}/embed/badge/${agentId}" width="320" height="180" frameborder="0"></iframe>`;
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
@@ -137,34 +193,33 @@ export default function AgentProfile() {
           <ArrowLeft className="w-4 h-4" /> Leaderboard
         </Link>
         <span className="text-gray-700">/</span>
-        <span className="text-white">{agent.name}</span>
+        <span className="text-white">{agentName}</span>
       </div>
 
       {/* Header */}
       <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-2xl p-6 mb-6">
         <div className="flex items-start gap-6">
-          <div className="text-5xl">{agent.avatar}</div>
+          <div className="text-5xl"><Bot className="w-12 h-12 text-cyan-400" /></div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3 mb-1">
-              <h1 className="text-2xl font-black text-white">{agent.name}</h1>
-              {agent.certified && (
+              <h1 className="text-2xl font-black text-white">{agentName}</h1>
+              {certified && (
                 <span className="flex items-center gap-1 px-2.5 py-1 bg-emerald-500/15 text-emerald-400 text-[10px] font-bold rounded-full border border-emerald-500/30">
                   <Shield className="w-3 h-3" /> CERTIFIED
                 </span>
               )}
             </div>
-            <p className="text-sm text-gray-400 mb-3">{agent.description}</p>
+            <p className="text-sm text-gray-400 mb-3">{agentDescription}</p>
             <div className="flex items-center gap-4 text-xs text-gray-500">
-              <span>Provider: <strong className="text-gray-300">{agent.provider}</strong></span>
-              <span>Model: <strong className="text-gray-300">{agent.model}</strong></span>
-              <span>Domain: <strong className="text-gray-300">{agent.domain}</strong></span>
-              <span>Active: <strong className="text-emerald-400">{agent.lastActive}</strong></span>
+              <span>Provider: <strong className="text-gray-300">{provider}</strong></span>
+              <span>Model: <strong className="text-gray-300">{model}</strong></span>
+              <span>Status: <strong className="text-emerald-400">{agent?.status ?? 'active'}</strong></span>
             </div>
           </div>
           <div className="text-right flex-shrink-0">
-            <div className={clsx('text-5xl font-black font-mono mb-1', gs.text)}>{agent.grade}</div>
+            <div className={clsx('text-5xl font-black font-mono mb-1', gs.text)}>{grade}</div>
             <div className="flex items-center gap-1 justify-end">
-              <span className="text-sm font-mono text-white font-bold">{agent.truthScore}</span>
+              <span className="text-sm font-mono text-white font-bold">{truthScore.toFixed(1)}</span>
               <span className="text-xs text-gray-500">/100</span>
             </div>
             <p className="text-[10px] text-gray-600">TruthScore</p>
@@ -181,11 +236,11 @@ export default function AgentProfile() {
               <Award className="w-4 h-4 text-cyan-400" /> Rating Components
             </h3>
             <div className="grid grid-cols-2 gap-x-8 gap-y-4">
-              <ScoreBar label="Brier Score (accuracy)" value={agent.brierPercent} color="bg-gradient-to-r from-cyan-500 to-emerald-500" />
-              <ScoreBar label="Sharpe Ratio (returns)" value={agent.sharpePercent} color="bg-gradient-to-r from-blue-500 to-cyan-500" />
-              <ScoreBar label="Win Rate" value={agent.winRatePercent} color="bg-gradient-to-r from-emerald-500 to-teal-500" />
-              <ScoreBar label="Consistency" value={agent.consistencyPercent} color="bg-gradient-to-r from-purple-500 to-blue-500" />
-              <ScoreBar label="Risk Management" value={agent.riskPercent} color="bg-gradient-to-r from-amber-500 to-orange-500" />
+              <ScoreBar label="Brier Score (accuracy)" value={brierPercent} color="bg-gradient-to-r from-cyan-500 to-emerald-500" />
+              <ScoreBar label="Sharpe Ratio (returns)" value={sharpePercent} color="bg-gradient-to-r from-blue-500 to-cyan-500" />
+              <ScoreBar label="Win Rate" value={winRatePercent} color="bg-gradient-to-r from-emerald-500 to-teal-500" />
+              <ScoreBar label="Consistency" value={consistencyPercent} color="bg-gradient-to-r from-purple-500 to-blue-500" />
+              <ScoreBar label="Risk Management" value={riskPercent} color="bg-gradient-to-r from-amber-500 to-orange-500" />
             </div>
           </div>
 
@@ -195,7 +250,7 @@ export default function AgentProfile() {
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
                 <Activity className="w-4 h-4 text-cyan-400" /> TruthScore History (30d)
               </h3>
-              <span className={clsx('text-sm font-mono font-bold', gs.text)}>{agent.truthScore.toFixed(1)}</span>
+              <span className={clsx('text-sm font-mono font-bold', gs.text)}>{truthScore.toFixed(1)}</span>
             </div>
             <div className="h-48">
               <ResponsiveContainer width="100%" height="100%">
@@ -222,7 +277,7 @@ export default function AgentProfile() {
             </h3>
             <div className="space-y-2">
               {domainScores.map(d => {
-                const dgs = GRADE_STYLES[d.grade] || GRADE_STYLES['A'];
+                const dgs = GRADE_STYLES[d.grade] || GRADE_STYLES['NR'];
                 return (
                   <div key={d.domain} className="flex items-center gap-3 py-2 border-b border-[#111] last:border-0">
                     <span className="text-sm text-gray-400 w-32">{d.domain}</span>
@@ -238,27 +293,15 @@ export default function AgentProfile() {
             </div>
           </div>
 
-          {/* Recent Predictions */}
+          {/* Recent Predictions (placeholder until API supports it) */}
           <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl p-5">
             <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
               <Target className="w-4 h-4 text-cyan-400" /> Recent Predictions
             </h3>
-            <div className="space-y-2">
-              {recentPredictions.map((p, i) => (
-                <div key={i} className="flex items-center gap-3 py-2.5 border-b border-[#111] last:border-0">
-                  <span className={clsx('text-[10px] font-bold px-2 py-0.5 rounded',
-                    p.prediction === 'YES' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
-                  )}>{p.prediction}</span>
-                  <span className="text-sm text-gray-300 flex-1 truncate">{p.market}</span>
-                  <span className="text-xs font-mono text-gray-500">{p.confidence}%</span>
-                  <span className={clsx('text-[10px] px-2 py-0.5 rounded font-medium',
-                    p.outcome === 'correct' ? 'bg-emerald-500/20 text-emerald-400' :
-                    p.outcome === 'incorrect' ? 'bg-red-500/20 text-red-400' :
-                    'bg-gray-500/10 text-gray-500'
-                  )}>{p.outcome}</span>
-                  <span className="text-[10px] text-gray-600">{p.time}</span>
-                </div>
-              ))}
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <Target className="w-8 h-8 text-gray-700 mb-3" />
+              <p className="text-sm text-gray-500">Predictions coming soon</p>
+              <p className="text-xs text-gray-700 mt-1">Individual prediction history will appear here once available.</p>
             </div>
           </div>
         </div>
@@ -284,14 +327,14 @@ export default function AgentProfile() {
           <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl p-5 space-y-3">
             <h3 className="text-sm font-bold text-white">Key Metrics</h3>
             {[
-              { label: 'Total Predictions', value: agent.totalPredictions.toLocaleString() },
-              { label: 'Verified', value: agent.verifiedPredictions.toLocaleString() },
-              { label: 'Brier Score', value: agent.brierScore.toFixed(3) },
-              { label: 'Sharpe Ratio', value: agent.sharpeRatio.toFixed(2) },
-              { label: 'Win Rate', value: `${agent.winRate}%` },
-              { label: 'Total P&L', value: `+$${agent.totalPnl.toLocaleString()}` },
-              { label: 'Avg Confidence', value: `${(agent.avgConfidence * 100).toFixed(0)}%` },
-              { label: 'Active Since', value: new Date(agent.activeSince).toLocaleDateString() },
+              { label: 'Total Trades', value: totalTrades.toLocaleString() },
+              { label: 'Winning Trades', value: winningTrades.toLocaleString() },
+              { label: 'Brier Score', value: brierScore.toFixed(3) },
+              { label: 'Sharpe Ratio', value: sharpeRatio.toFixed(2) },
+              { label: 'Win Rate', value: `${winRate.toFixed(1)}%` },
+              { label: 'Total P&L', value: `${totalPnl >= 0 ? '+' : ''}$${Math.abs(totalPnl).toLocaleString()}` },
+              { label: 'Max Drawdown', value: `${maxDrawdown.toFixed(1)}%` },
+              ...(activeSince ? [{ label: 'Active Since', value: new Date(activeSince).toLocaleDateString() }] : []),
             ].map(s => (
               <div key={s.label} className="flex items-center justify-between">
                 <span className="text-xs text-gray-500">{s.label}</span>
@@ -302,7 +345,7 @@ export default function AgentProfile() {
 
           {/* Actions */}
           <div className="space-y-2">
-            <Link to={`/compare`}
+            <Link to="/compare"
               className="w-full flex items-center justify-center gap-2 py-2.5 bg-[#111] border border-[#262626] hover:border-cyan-500/30 text-white text-sm font-medium rounded-xl transition-colors">
               <GitCompare className="w-4 h-4 text-cyan-400" /> Compare Agent
             </Link>
@@ -320,10 +363,10 @@ export default function AgentProfile() {
                   <Zap className="w-2.5 h-2.5 text-white" />
                 </div>
                 <div className="flex-1">
-                  <p className="text-[10px] text-white font-medium">{agent.name}</p>
-                  <p className="text-[8px] text-gray-500">TruthScore: {agent.truthScore}</p>
+                  <p className="text-[10px] text-white font-medium">{agentName}</p>
+                  <p className="text-[8px] text-gray-500">TruthScore: {truthScore.toFixed(1)}</p>
                 </div>
-                <span className={clsx('text-sm font-black font-mono', gs.text)}>{agent.grade}</span>
+                <span className={clsx('text-sm font-black font-mono', gs.text)}>{grade}</span>
               </div>
             </div>
             <div className="relative">

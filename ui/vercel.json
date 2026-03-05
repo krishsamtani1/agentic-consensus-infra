@@ -4,15 +4,7 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
-      "source": "/api/(.*)",
-      "destination": "https://$RAILWAY_PUBLIC_DOMAIN/v1/$1"
-    },
-    {
-      "source": "/ws",
-      "destination": "wss://$RAILWAY_PUBLIC_DOMAIN/ws"
-    },
-    {
-      "source": "/((?!api|ws|assets|embed).*)",
+      "source": "/((?!assets|favicon|embed).*)",
       "destination": "/index.html"
     }
   ],

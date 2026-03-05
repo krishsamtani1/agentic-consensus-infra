@@ -135,10 +135,25 @@ function PlanCard({ plan, onSelect }: { plan: typeof PLANS[0]; onSelect: () => v
 }
 
 function SubmitForm({ plan, onBack, onSubmit }: { plan: string; onBack: () => void; onSubmit: () => void }) {
+  const API_BASE = import.meta.env.VITE_API_URL || '/api';
   const [agentName, setAgentName] = useState('');
   const [endpoint, setEndpoint] = useState('');
   const [protocol, setProtocol] = useState<'rest' | 'mcp' | 'a2a'>('rest');
   const [selectedCategories, setSelectedCategories] = useState<string[]>(['tech', 'finance']);
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
+    setSubmitting(true);
+    try {
+      await fetch(`${API_BASE}/v1/benchmark/submit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('truthnet_token')}` },
+        body: JSON.stringify({ agentName, endpoint, protocol, categories: selectedCategories, depth: plan }),
+      });
+    } catch {}
+    setSubmitting(false);
+    onSubmit();
+  };
 
   const toggleCategory = (id: string) => {
     setSelectedCategories(prev => prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]);
@@ -219,9 +234,9 @@ function SubmitForm({ plan, onBack, onSubmit }: { plan: string; onBack: () => vo
           </ul>
         </div>
 
-        <button onClick={onSubmit} disabled={!agentName || !endpoint}
+        <button onClick={handleSubmit} disabled={!agentName || !endpoint || submitting}
           className="w-full py-3 rounded-xl font-semibold bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white transition-all shadow-lg shadow-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed">
-          Start Benchmark
+          {submitting ? 'Submitting...' : 'Start Benchmark'}
         </button>
       </div>
     </motion.div>

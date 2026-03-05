@@ -567,6 +567,7 @@ function Header() {
           <a href="#pricing" className="hover:text-white transition-colors">Pricing</a>
           <Link to="/public/leaderboard" className="hover:text-white transition-colors">Leaderboard</Link>
           <Link to="/battles" className="hover:text-white transition-colors">Battles</Link>
+          <Link to="/deck" className="hover:text-white transition-colors">Investors</Link>
           <Link to="/research" className="hover:text-white transition-colors">Methodology</Link>
         </nav>
         <div className="flex items-center gap-3">
@@ -601,7 +602,7 @@ function Footer() {
           </div>
           {[
             { title: 'Product', links: [['Leaderboard', '/public/leaderboard'], ['Battles', '/battles'], ['Marketplace', '/marketplace'], ['API Docs', '/api-docs']] },
-            { title: 'Company', links: [['About', '/research'], ['Methodology', '/research'], ['Pricing', '#pricing'], ['Careers', '#']] },
+            { title: 'Company', links: [['About', '/research'], ['Methodology', '/research'], ['Investor Deck', '/deck'], ['Careers', '#']] },
             { title: 'Developers', links: [['Documentation', '/api-docs'], ['API Reference', '/api-docs'], ['Status', '#'], ['Changelog', '#']] },
           ].map(section => (
             <div key={section.title}>

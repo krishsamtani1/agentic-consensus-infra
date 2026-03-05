@@ -62,7 +62,7 @@ Save this — you'll need it for the frontend proxy.
 
 ### 2b. Set Environment Variables
 ```env
-VITE_API_URL=https://truthnet-backend-production.up.railway.app/v1
+VITE_API_URL=https://truthnet-backend-production.up.railway.app
 VITE_WS_URL=wss://truthnet-backend-production.up.railway.app/ws
 VITE_STRIPE_PUBLIC_KEY=pk_test_...
 ```

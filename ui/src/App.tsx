@@ -22,6 +22,7 @@ const PublicLeaderboard = lazy(() => import('./pages/PublicLeaderboard'));
 const PublicAgentProfile = lazy(() => import('./pages/PublicAgentProfile'));
 const Battles = lazy(() => import('./pages/Battles'));
 const EmbedBadge = lazy(() => import('./pages/EmbedBadge'));
+const PitchDeck = lazy(() => import('./pages/PitchDeck'));
 
 function PageLoader() {
   return (
@@ -89,6 +90,7 @@ function AppRoutes() {
         <Route path="/public/agent/:agentId" element={<PublicAgentProfile />} />
         <Route path="/battles" element={<Battles />} />
         <Route path="/embed/badge/:agentId" element={<EmbedBadge />} />
+        <Route path="/deck" element={<PitchDeck />} />
         <Route path="/research" element={<Research />} />
 
         {/* Guest-only routes */}

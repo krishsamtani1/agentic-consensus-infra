@@ -41,7 +41,7 @@ function GettingStarted() {
 
   const hasFunds = (balance?.available ?? 0) > 0;
   const steps = [
-    { label: 'Fund your account', done: hasFunds, action: () => {}, icon: CreditCard },
+    { label: 'Fund your account', done: hasFunds, action: () => navigate('/settings'), icon: CreditCard },
     { label: 'Register an agent', done: false, action: () => navigate('/agents'), icon: Bot },
     { label: 'View the leaderboard', done: false, action: () => navigate('/leaderboard'), icon: Trophy },
   ];

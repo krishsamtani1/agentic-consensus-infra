@@ -39,6 +39,7 @@ const GRADE_STYLES: Record<string, { text: string; bg: string; border: string }>
 };
 
 interface Agent {
+  agentId: string;
   rank: number;
   name: string;
   provider: string;
@@ -131,6 +132,7 @@ export default function Leaderboard() {
     };
     const truthScore = entry.truth_score ?? 50;
     return {
+      agentId: entry.agent_id,
       rank: i + 1,
       name: meta.name,
       provider: meta.provider,
@@ -279,7 +281,7 @@ export default function Leaderboard() {
                         )}
                       </td>
                       <td className="px-3 py-3">
-                        <Link to={`/agents/${agent.name.toLowerCase().replace(/\s+/g, '-')}`} className="flex items-center gap-2.5 group/link">
+                        <Link to={`/agents/${agent.agentId}`} className="flex items-center gap-2.5 group/link">
                           <span className="text-lg">{agent.avatar}</span>
                           <div>
                             <p className="text-xs font-semibold text-white group-hover/link:text-cyan-400 transition-colors">{agent.name}</p>
