@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet, Link } from 'react-router-dom';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { NotificationProvider } from './components/NotificationCenter';
 import Layout from './components/Layout';
@@ -44,9 +44,9 @@ function NotFound() {
         <p className="text-gray-500 text-sm mb-6">
           The page you're looking for doesn't exist or has been moved.
         </p>
-        <a href="/dashboard" className="inline-flex items-center gap-2 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-medium rounded-lg transition-colors">
+        <Link to="/dashboard" className="inline-flex items-center gap-2 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-medium rounded-lg transition-colors">
           Back to Dashboard
-        </a>
+        </Link>
       </div>
     </div>
   );

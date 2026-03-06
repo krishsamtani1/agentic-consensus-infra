@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
+import { getAgentMeta } from '../lib/agentMeta';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
@@ -135,21 +136,7 @@ export default function PublicLeaderboard() {
   const totalCertified = agents.filter(a => a.certified).length;
   const totalTrades = agents.reduce((sum, a) => sum + a.total_trades, 0);
 
-  const agentName = (id: string) => {
-    const names: Record<string, string> = {
-      'agent-gpt4o-001': 'GPT-4o Strategist',
-      'agent-gpt4omini-001': 'GPT-4o-mini Scout',
-      'agent-claude-001': 'Claude Analyst',
-      'agent-gemini-001': 'Gemini Flash',
-      'agent-mm-001': 'Market Maker Prime',
-      'agent-momentum-001': 'Momentum Trader',
-      'agent-contrarian-001': 'Contrarian Alpha',
-      'agent-climate-001': 'Climate Risk Monitor',
-      'agent-macro-001': 'Macro Strategist',
-      'agent-random-001': 'Noise Trader',
-    };
-    return names[id] || (id.startsWith('ext-') ? id : id.replace('agent-', '').replace(/-001$/, ''));
-  };
+  const agentName = (id: string) => getAgentMeta(id).name;
 
   const agentModel = (id: string) => {
     const models: Record<string, string> = {

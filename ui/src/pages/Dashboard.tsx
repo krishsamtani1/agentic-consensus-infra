@@ -6,7 +6,7 @@
  * - WebSocket for live activity
  */
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   TrendingUp, TrendingDown, Users, DollarSign, BarChart3,
@@ -22,7 +22,9 @@ import {
   PieChart as RPieChart, Pie, Cell
 } from 'recharts';
 import { useAuth } from '../hooks/useAuth';
+import { useWebSocket } from '../hooks/useWebSocket';
 import { apiClient, ratingsAPI, Market } from '../api/client';
+import { getAgentMeta } from '../lib/agentMeta';
 
 // ============================================================================
 // GETTING STARTED
@@ -92,21 +94,6 @@ function TopAgents() {
     return 'text-red-400';
   };
 
-  const avatarMap: Record<string, string> = {
-    'agent-oracle-001': '⚡', 'agent-tech-001': '💻', 'agent-geo-001': '🌍',
-    'agent-logistics-001': '🚢', 'agent-climate-001': '🌡️', 'agent-crypto-001': '₿',
-    'agent-mm-001': '📊', 'agent-macro-001': '📈', 'agent-sentiment-001': '🧠',
-    'agent-contrarian-001': '🔄',
-  };
-
-  const nameMap: Record<string, string> = {
-    'agent-oracle-001': 'TRUTH-NET Oracle', 'agent-tech-001': 'Tech Oracle',
-    'agent-geo-001': 'Geopolitical Analyst', 'agent-logistics-001': 'Logistics Sentinel',
-    'agent-climate-001': 'Climate Risk Monitor', 'agent-crypto-001': 'Crypto Alpha',
-    'agent-mm-001': 'Market Maker Prime', 'agent-macro-001': 'Macro Strategist',
-    'agent-sentiment-001': 'Sentiment Scanner', 'agent-contrarian-001': 'Contrarian Alpha',
-  };
-
   return (
     <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg overflow-hidden">
       <div className="p-3 border-b border-[#111] flex items-center justify-between">
@@ -131,11 +118,11 @@ function TopAgents() {
             className="w-full p-2.5 hover:bg-white/[0.02] transition-colors flex items-center gap-3 text-left"
           >
             <span className="text-[10px] font-mono text-gray-700 w-4">#{i + 1}</span>
-            <span className="text-lg">{avatarMap[agent.agent_id] || '🤖'}</span>
+            <span className="text-lg">{getAgentMeta(agent.agent_id).avatar}</span>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
                 <p className="text-xs text-white font-medium truncate">
-                  {nameMap[agent.agent_id] || agent.agent_id}
+                  {getAgentMeta(agent.agent_id).name}
                 </p>
                 {agent.certified && (
                   <ShieldCheck className="w-3 h-3 text-emerald-400 flex-shrink-0" />
@@ -175,59 +162,30 @@ interface ActivityItem {
 
 function LiveActivityFeed() {
   const [activities, setActivities] = useState<ActivityItem[]>([]);
-  const wsRef = useRef<WebSocket | null>(null);
-
-  const nameMap: Record<string, string> = {
-    'agent-oracle-001': 'TRUTH-NET Oracle', 'agent-tech-001': 'Tech Oracle',
-    'agent-geo-001': 'Geopolitical Analyst', 'agent-logistics-001': 'Logistics Sentinel',
-    'agent-climate-001': 'Climate Risk Monitor', 'agent-crypto-001': 'Crypto Alpha',
-    'agent-mm-001': 'Market Maker Prime', 'agent-macro-001': 'Macro Strategist',
-    'agent-sentiment-001': 'Sentiment Scanner', 'agent-contrarian-001': 'Contrarian Alpha',
-  };
+  const { messages } = useWebSocket();
 
   useEffect(() => {
-    const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:3001';
-    let ws: WebSocket;
-    let closed = false;
+    const tradeMessages = messages.filter(m => m.channel === 'trades');
+    if (tradeMessages.length === 0) return;
 
-    function connect() {
-      ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
+    const latest = tradeMessages[tradeMessages.length - 1];
+    const trade = (latest.data as any)?.trade || latest.data as any;
+    if (!trade?.buyer_id) return;
 
-      ws.onmessage = (event) => {
-        try {
-          const msg = typeof event.data === 'string' ? JSON.parse(event.data) : null;
-          if (!msg) return;
-
-          if (msg.channel === 'trades' && msg.data) {
-            const trade = msg.data.trade || msg.data; // Unwrap trade from event payload
-            const agentName = nameMap[trade.buyer_id] || trade.buyer_id?.replace('agent-', '').replace(/-/g, ' ') || 'Agent';
-            setActivities(prev => [{
-              id: trade.id || Date.now().toString(),
-              time: 'just now',
-              agent: agentName,
-              action: `Bought ${(trade.outcome || 'YES').toUpperCase()}`,
-              market: trade.market_id?.substring(0, 8) || '',
-              detail: `${trade.quantity || 0} shares @ ${((trade.price || 0) * 100).toFixed(0)}¢`,
-            }, ...prev].slice(0, 30));
-          }
-        } catch {}
-      };
-
-      ws.onclose = () => {
-        if (!closed) setTimeout(connect, 3000);
-      };
-
-      ws.onerror = () => {};
-    }
-
-    connect();
-
-    return () => {
-      closed = true;
-      if (wsRef.current) wsRef.current.close();
-    };
-  }, []);
+    const agentName = getAgentMeta(trade.buyer_id).name;
+    setActivities(prev => {
+      const id = trade.id || Date.now().toString();
+      if (prev.some(a => a.id === id)) return prev;
+      return [{
+        id,
+        time: 'just now',
+        agent: agentName,
+        action: `Bought ${(trade.outcome || 'YES').toUpperCase()}`,
+        market: trade.market_id?.substring(0, 8) || '',
+        detail: `${trade.quantity || 0} shares @ ${((trade.price || 0) * 100).toFixed(0)}¢`,
+      }, ...prev].slice(0, 30);
+    });
+  }, [messages]);
 
   // Age the "just now" labels
   useEffect(() => {

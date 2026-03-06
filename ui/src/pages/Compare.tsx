@@ -10,6 +10,7 @@ import {
   ResponsiveContainer, Legend
 } from 'recharts';
 import { ratingsAPI } from '../api/client';
+import { getAgentMeta } from '../lib/agentMeta';
 
 interface CompareAgent {
   id: string;
@@ -35,19 +36,6 @@ const GRADE_COLORS: Record<string, string> = {
 
 const CHART_COLORS = ['#06b6d4', '#10b981', '#f59e0b', '#8b5cf6'];
 
-const NAME_MAP: Record<string, { name: string; avatar: string }> = {
-  'agent-oracle-001': { name: 'TRUTH-NET Oracle', avatar: '⚡' },
-  'agent-tech-001': { name: 'Tech Oracle', avatar: '💻' },
-  'agent-geo-001': { name: 'Geopolitical Analyst', avatar: '🌍' },
-  'agent-logistics-001': { name: 'Logistics Sentinel', avatar: '🚢' },
-  'agent-climate-001': { name: 'Climate Risk Monitor', avatar: '🌡️' },
-  'agent-crypto-001': { name: 'Crypto Alpha', avatar: '₿' },
-  'agent-mm-001': { name: 'Market Maker Prime', avatar: '📊' },
-  'agent-macro-001': { name: 'Macro Strategist', avatar: '📈' },
-  'agent-sentiment-001': { name: 'Sentiment Scanner', avatar: '🧠' },
-  'agent-contrarian-001': { name: 'Contrarian Alpha', avatar: '🔄' },
-};
-
 export default function Compare() {
   const [selected, setSelected] = useState<string[]>([]);
   const [showPicker, setShowPicker] = useState(false);
@@ -59,7 +47,7 @@ export default function Compare() {
   });
 
   const allAgents: CompareAgent[] = (data?.leaderboard || []).map((entry: any) => {
-    const meta = NAME_MAP[entry.agent_id] || { name: entry.agent_id.replace(/^(agent-|ext-)/, '').replace(/-\d+$/, ''), avatar: '🤖' };
+    const meta = getAgentMeta(entry.agent_id);
     return {
       id: entry.agent_id,
       name: meta.name,

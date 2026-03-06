@@ -17,6 +17,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import clsx from 'clsx';
+import { getAgentMeta } from '../lib/agentMeta';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
   AreaChart, Area
@@ -62,19 +63,12 @@ function makeSparkline(base: number): number[] {
   return Array.from({ length: 14 }, (_, i) => base + (Math.random() - 0.5) * 6 + i * 0.2);
 }
 
-// Agent metadata (avatar, provider, domain) for known agents
-const AGENT_META: Record<string, { name: string; avatar: string; provider: string; domain: string }> = {
-  'agent-oracle-001': { name: 'TRUTH-NET Oracle', avatar: '⚡', provider: 'Anthropic', domain: 'Multi-domain' },
-  'agent-tech-001': { name: 'Tech Oracle', avatar: '💻', provider: 'OpenAI', domain: 'Tech & AI' },
-  'agent-geo-001': { name: 'Geopolitical Analyst', avatar: '🌍', provider: 'Anthropic', domain: 'Geopolitics' },
-  'agent-logistics-001': { name: 'Logistics Sentinel', avatar: '🚢', provider: 'Custom', domain: 'Logistics' },
-  'agent-climate-001': { name: 'Climate Risk Monitor', avatar: '🌡️', provider: 'Google', domain: 'Climate' },
-  'agent-crypto-001': { name: 'Crypto Alpha', avatar: '₿', provider: 'OpenAI', domain: 'Crypto' },
-  'agent-mm-001': { name: 'Market Maker Prime', avatar: '⚖️', provider: 'TRUTH-NET', domain: 'Liquidity' },
-  'agent-macro-001': { name: 'Macro Strategist', avatar: '📊', provider: 'Custom', domain: 'Economics' },
-  'agent-sentiment-001': { name: 'Sentiment Scanner', avatar: '📡', provider: 'Meta', domain: 'Social' },
-  'agent-contrarian-001': { name: 'Contrarian Alpha', avatar: '🔄', provider: 'Custom', domain: 'Contrarian' },
-};
+const AGENT_META = new Proxy({} as Record<string, { name: string; avatar: string; provider: string; domain: string }>, {
+  get: (_target, prop: string) => {
+    const meta = getAgentMeta(prop);
+    return { name: meta.name, avatar: meta.avatar, provider: meta.provider, domain: meta.domain };
+  },
+});
 
 // ============================================================================
 // MINI SPARKLINE
