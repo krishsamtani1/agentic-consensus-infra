@@ -59,7 +59,12 @@ export class AgentTradingLoop {
     return this.llmEngine;
   }
 
+  hasAgent(id: string): boolean {
+    return this.agents.some(a => a.id === id);
+  }
+
   registerAgent(agent: TradingAgent): void {
+    if (this.hasAgent(agent.id)) return;
     if (!this.escrow.getWallet(agent.id)) {
       this.escrow.createWallet(agent.id, 10000);
     }

@@ -213,6 +213,29 @@ export async function seedPlatform(
     }
   });
 
+  // Listen for user-created agents from the governance API and auto-register them
+  eventBus.subscribe('agent.created', (data: any) => {
+    const agent = data.agent || data;
+    if (!agent?.id || tradingLoop.hasAgent(agent.id)) return;
+
+    const newTradingAgent: TradingAgent = {
+      id: agent.id,
+      name: agent.name || agent.id,
+      strategy: 'informed',
+      domains: agent.trading_config?.allowed_topics || [],
+      riskTolerance: 0.35,
+      accuracy: 0.6,
+      maxPositionSize: Math.min(200, Math.round((agent.staked_budget || 100000) / 500)),
+      active: true,
+      provider: 'local',
+      model: 'heuristic-user',
+    };
+
+    tradingLoop.registerAgent(newTradingAgent);
+    ratingEngine.initializeRating(agent.id);
+    console.log(`[Seeder] Auto-registered user-created agent: ${agent.name} (${agent.id})`);
+  });
+
   console.log('[Seeder] ═══════════════════════════════════════════════');
   console.log('[Seeder] Platform is LIVE — agents are reasoning with real LLMs\n');
 

@@ -22,6 +22,7 @@ import {
 } from 'recharts';
 import clsx from 'clsx';
 import { ratingsAPI, agentsAPI, type RatingDetail, type Agent } from '../api/client';
+import { getAgentMeta } from '../lib/agentMeta';
 
 const GRADE_STYLES: Record<string, { text: string; bg: string; border: string; glow: string }> = {
   'AAA': { text: 'text-emerald-400', bg: 'bg-emerald-500/15', border: 'border-emerald-500/30', glow: 'shadow-emerald-500/20' },
@@ -109,8 +110,8 @@ export default function AgentProfile() {
     retry: 1,
   });
 
-  const isLoading = ratingLoading || agentLoading;
-  const error = ratingError || agentError;
+  const isLoading = ratingLoading && agentLoading;
+  const error = ratingError && agentError;
 
   if (!agentId) {
     return (
@@ -138,7 +139,7 @@ export default function AgentProfile() {
     );
   }
 
-  if (error || !rating) {
+  if (error && !rating && !agent) {
     return (
       <div className="p-6 max-w-6xl mx-auto">
         <div className="flex flex-col items-center justify-center py-32 text-center">
@@ -155,33 +156,44 @@ export default function AgentProfile() {
     );
   }
 
-  const agentName = agent?.name || agentId.replace('agent-', '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-  const agentDescription = agent?.description || 'AI prediction agent rated by the TRUTH-NET network.';
-  const provider = agent?.provider || 'Unknown';
+  const meta = getAgentMeta(agentId);
+  const agentName = agent?.name && agent.name !== agentId ? agent.name : meta.name;
+  const agentDescription = agent?.description || meta.description;
+  const provider = agent?.provider || meta.provider;
   const model = agent?.model || 'Unknown';
-  const truthScore = rating.truth_score ?? 0;
-  const grade = rating.grade || 'NR';
-  const certified = rating.certified ?? false;
+  const truthScore = rating?.truth_score ?? (agent as any)?.truth_score ?? 0;
+  const grade = rating?.grade || 'NR';
+  const certified = rating?.certified ?? false;
   const gs = GRADE_STYLES[grade] || GRADE_STYLES['NR'];
 
-  const brierScore = rating.components?.brier_accuracy?.raw ?? rating.components?.brier?.raw ?? agent?.brier_score ?? 0.25;
-  const brierPercent = rating.components?.brier_accuracy?.score ?? rating.components?.brier?.score ?? 50;
-  const sharpeRatio = rating.components?.sharpe_ratio?.raw ?? rating.components?.sharpe?.raw ?? agent?.sharpe_ratio ?? 0;
-  const sharpePercent = rating.components?.sharpe_ratio?.score ?? rating.components?.sharpe?.score ?? 50;
-  const winRate = agent?.win_rate ?? rating.performance?.win_rate ?? 0;
-  const winRatePercent = rating.components?.win_rate?.score ?? 50;
-  const consistencyPercent = rating.components?.consistency?.score ?? 50;
-  const riskPercent = rating.components?.risk_management?.score ?? rating.components?.risk?.score ?? 50;
+  const brierScore = rating?.components?.brier_accuracy?.raw ?? rating?.components?.brier?.raw ?? agent?.brier_score ?? 0.25;
+  const brierPercent = rating?.components?.brier_accuracy?.score ?? rating?.components?.brier?.score ?? 50;
+  const sharpeRatio = rating?.components?.sharpe_ratio?.raw ?? rating?.components?.sharpe?.raw ?? agent?.sharpe_ratio ?? 0;
+  const sharpePercent = rating?.components?.sharpe_ratio?.score ?? rating?.components?.sharpe?.score ?? 50;
+  const winRate = agent?.win_rate ?? rating?.performance?.win_rate ?? 0;
+  const winRatePercent = rating?.components?.win_rate?.score ?? 50;
+  const consistencyPercent = rating?.components?.consistency?.score ?? 50;
+  const riskPercent = rating?.components?.risk_management?.score ?? rating?.components?.risk?.score ?? 50;
 
-  const totalTrades = agent?.total_trades ?? rating.performance?.total_trades ?? 0;
+  const totalTrades = agent?.total_trades ?? rating?.performance?.total_trades ?? 0;
   const winningTrades = agent?.winning_trades ?? 0;
-  const totalPnl = agent?.total_pnl ?? rating.performance?.total_pnl ?? 0;
-  const maxDrawdown = agent?.max_drawdown ?? rating.performance?.max_drawdown ?? 0;
+  const totalPnl = agent?.total_pnl ?? rating?.performance?.total_pnl ?? 0;
+  const maxDrawdown = agent?.max_drawdown ?? rating?.performance?.max_drawdown ?? 0;
   const activeSince = agent?.created_at ?? '';
 
   const scoreHistory = generateScoreHistory(truthScore);
   const domainScores = buildDomainBreakdown(totalTrades, brierScore);
-  const radarData = buildRadarData(rating);
+
+  const defaultRating: RatingDetail = {
+    agent_id: agentId,
+    truth_score: truthScore,
+    grade,
+    grade_color: '',
+    certified,
+    components: {},
+    performance: {},
+  };
+  const radarData = buildRadarData(rating || defaultRating);
 
   const embedCode = `<iframe src="${window.location.origin}/embed/badge/${agentId}" width="320" height="180" frameborder="0"></iframe>`;
 

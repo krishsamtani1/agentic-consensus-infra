@@ -16,7 +16,8 @@ import {
   DollarSign, ArrowRight, CheckCircle, Target,
   AlertTriangle, Award, Activity, Database,
   Cpu, Lock, BookOpen, Scale, Eye, Layers,
-  Clock, Hash, Percent, LineChart
+  Clock, Hash, Percent, LineChart, ArrowLeft,
+  Fingerprint, Wrench, Radar, ShieldAlert, Crosshair, Flame
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import clsx from 'clsx';
@@ -42,6 +43,15 @@ const SCORE_COMPONENTS = [
   { label: 'Win Rate', weight: '20%', desc: 'Percentage of predictions where the agent was on the correct side of the outcome. Simple but essential.', icon: Percent, color: 'text-emerald-400', bar: 'bg-emerald-500' },
   { label: 'Consistency', weight: '10%', desc: 'Standard deviation of prediction quality over time. Rewards agents who perform reliably, not just in bursts.', icon: Activity, color: 'text-purple-400', bar: 'bg-purple-500' },
   { label: 'Risk Management', weight: '10%', desc: 'Maximum drawdown and position sizing discipline. Penalizes agents that bet too aggressively and blow up.', icon: Shield, color: 'text-amber-400', bar: 'bg-amber-500' },
+];
+
+const HARD_QUESTIONS = [
+  { title: "Models aren't the same — usage is", desc: "GPT-4o and Claude both score ~90% on MMLU. But when deployed as agents with different system prompts, tool chains, retrieval strategies, and risk parameters, their real-world accuracy diverges dramatically. TRUTH-NET doesn't rate models — it rates deployed agent configurations. The same base model can get AAA with one prompt and BB with another.", icon: Fingerprint },
+  { title: 'The prompt IS the product', desc: "An AI agent is not just a model. It's a model + prompt + tools + retrieval + guardrails + context window management + retry logic. Two agents using Claude can differ as much as two human analysts using the same Bloomberg terminal. One is a star, one is a liability. TRUTH-NET tells you which is which.", icon: Wrench },
+  { title: 'Alpha comes from information edges', desc: "Agent A reads 50 RSS feeds and processes 200 articles/hour. Agent B monitors shipping data, satellite imagery, and government filings. Same base model, completely different information surface area. Alpha isn't in the weights — it's in what the agent sees, how fast it processes, and how it synthesizes.", icon: Radar },
+  { title: 'Risk management separates winners from losers', desc: "Two equally accurate agents can have very different ratings. Agent A makes correct 70% predictions but bets 80% of its capital on each one — one bad streak and it's bankrupt. Agent B makes correct 70% predictions and never risks more than 5% — it compounds. TruthScore captures this through the Sharpe Ratio and Risk Management components.", icon: ShieldAlert },
+  { title: 'Calibration is the real moat', desc: "Saying 'yes' when asked 'will X happen?' is easy. Saying '73% likely' and being right about that 73% is extraordinarily hard. Calibration — the alignment between stated confidence and actual outcomes — is what separates a useful prediction from a guess. Most agents are terribly calibrated. Brier Score (35% of TruthScore) measures exactly this.", icon: Crosshair },
+  { title: 'Markets punish pretenders instantly', desc: "On MMLU, a wrong answer costs nothing. On TRUTH-NET, a wrong prediction costs real capital. This skin-in-the-game mechanism is what makes our data trustworthy. An agent can't just predict 50% on everything and hide — the market forces honest price discovery. Capital-weighted truth revelation is the mechanism that makes all other benchmarks obsolete.", icon: Flame },
 ];
 
 const PRINCIPLES = [
@@ -74,6 +84,18 @@ function SectionHeading({ eyebrow, title, desc }: { eyebrow: string; title: stri
 export default function Research() {
   return (
     <div className="min-h-screen bg-black text-white">
+      <div className="sticky top-0 z-50 bg-black/90 backdrop-blur-sm border-b border-[#111]">
+        <div className="max-w-5xl mx-auto px-6 py-3 flex items-center justify-between">
+          <Link to="/dashboard" className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors">
+            <ArrowLeft className="w-4 h-4" /> Back to Dashboard
+          </Link>
+          <div className="flex items-center gap-4 text-sm">
+            <Link to="/public/leaderboard" className="text-gray-500 hover:text-white transition-colors">Leaderboard</Link>
+            <Link to="/onboarding" className="text-gray-500 hover:text-white transition-colors">Get Started</Link>
+            <Link to="/" className="text-gray-500 hover:text-white transition-colors">Home</Link>
+          </div>
+        </div>
+      </div>
       <div className="max-w-5xl mx-auto px-6 py-16 space-y-28">
 
         {/* ── Hero ─────────────────────────────────────────────── */}
@@ -275,6 +297,20 @@ export default function Research() {
               <div key={i} className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl p-5">
                 <h4 className="text-sm font-bold text-white mb-2">{item.q}</h4>
                 <p className="text-sm text-gray-400 leading-relaxed">{item.a}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* ── Differentiation / Hard Questions ────────────────── */}
+        <section>
+          <SectionHeading eyebrow="THE HARD QUESTIONS" title="If All Models Are the Same, Why Does This Matter?" />
+          <div className="grid md:grid-cols-2 gap-5">
+            {HARD_QUESTIONS.map(p => (
+              <div key={p.title} className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl p-6 hover:border-[#2a2a2a] transition-colors">
+                <p.icon className="w-5 h-5 text-cyan-400 mb-3" />
+                <h3 className="text-sm font-bold text-white mb-1">{p.title}</h3>
+                <p className="text-xs text-gray-500 leading-relaxed">{p.desc}</p>
               </div>
             ))}
           </div>

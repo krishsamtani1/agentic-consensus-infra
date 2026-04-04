@@ -12,6 +12,7 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { EventBus } from '../../events/EventBus.js';
 import { getDoctrineEngine, DoctrineConfig } from '../../core/DoctrineEngine.js';
 import { getAgentManager, CreateAgentRequest } from '../../core/AgentManager.js';
+import { getRatingEngine } from '../../rating/RatingEngine.js';
 
 export function createGovernanceRoutes(eventBus: EventBus) {
   const doctrineEngine = getDoctrineEngine(eventBus);
@@ -28,15 +29,36 @@ export function createGovernanceRoutes(eventBus: EventBus) {
      * List all agents
      */
     fastify.get('/agents', async (_request: FastifyRequest, reply: FastifyReply) => {
-      const agents = agentManager.getAllAgents();
+      const managedAgents = agentManager.getAllAgents();
+      const managedIds = new Set(managedAgents.map(a => a.id));
+
+      // Merge in seeded/platform agents from the rating engine
+      const ratingEngine = getRatingEngine(eventBus);
+      const allRatings = ratingEngine.getFullLeaderboard(100);
+      const platformAgents = allRatings
+        .filter(r => !managedIds.has(r.agent_id))
+        .map(r => ({
+          id: r.agent_id,
+          name: r.agent_id,
+          status: 'active',
+          truth_score: r.truth_score,
+          grade: r.grade,
+          brier_score: r.brier_score,
+          total_trades: r.total_trades,
+          total_pnl: r.total_pnl,
+          created_at: new Date(),
+          updated_at: new Date(),
+        }));
+
+      const agents = [...managedAgents, ...platformAgents];
       
       return reply.send({
         success: true,
         data: {
           agents,
           total: agents.length,
-          active: agents.filter(a => a.status === 'active').length,
-          paused: agents.filter(a => a.status === 'paused').length,
+          active: agents.filter((a: any) => a.status === 'active').length,
+          paused: agents.filter((a: any) => a.status === 'paused').length,
         },
         timestamp: new Date().toISOString(),
       });
@@ -52,17 +74,43 @@ export function createGovernanceRoutes(eventBus: EventBus) {
     ) => {
       const agent = agentManager.getAgent(request.params.id);
       
-      if (!agent) {
-        return reply.status(404).send({
-          success: false,
-          error: { code: 'AGENT_NOT_FOUND', message: 'Agent not found' },
+      if (agent) {
+        return reply.send({
+          success: true,
+          data: agent,
+          timestamp: new Date().toISOString(),
         });
       }
-      
-      return reply.send({
-        success: true,
-        data: agent,
-        timestamp: new Date().toISOString(),
+
+      // Fall back to rating engine data for seeded/platform agents
+      const ratingEngine = getRatingEngine(eventBus);
+      const rating = ratingEngine.getRating(request.params.id);
+      if (rating) {
+        return reply.send({
+          success: true,
+          data: {
+            id: rating.agent_id,
+            name: request.params.id,
+            status: 'active',
+            truth_score: rating.truth_score,
+            grade: rating.grade,
+            brier_score: rating.brier_score,
+            sharpe_ratio: rating.sharpe_ratio,
+            win_rate: rating.win_rate,
+            total_trades: rating.total_trades,
+            winning_trades: rating.winning_trades,
+            total_pnl: rating.total_pnl,
+            max_drawdown: rating.max_drawdown,
+            certified: rating.certified,
+            created_at: rating.last_updated,
+          },
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      return reply.status(404).send({
+        success: false,
+        error: { code: 'AGENT_NOT_FOUND', message: 'Agent not found' },
       });
     });
     

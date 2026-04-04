@@ -9,26 +9,17 @@
  * - Certification status
  */
 
-import { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { 
   Plus, 
   Bot, 
-  TrendingUp, 
-  TrendingDown,
-  Award,
-  DollarSign,
   Search,
-  MoreVertical,
   Plug,
-  Tag,
   Filter,
   Trash2,
   Copy,
-  Zap,
   Brain,
-  Eye,
-  Shuffle,
   Shield,
   ExternalLink,
   CheckCircle2,
@@ -45,6 +36,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 import { apiClient, ratingsAPI } from '../api/client';
+import { getAgentMeta } from '../lib/agentMeta';
 
 // ============================================================================
 // TYPES
@@ -109,156 +101,39 @@ const DATA_SOURCES = [
   { id: 'socialSentiment', name: 'Social Sentiment', icon: Globe, description: 'Twitter/Reddit analysis' },
 ];
 
-// Mock agents with enhanced KYA data
-const mockAgents: AgentData[] = [
-  {
-    id: 'agent-oracle-001',
-    name: 'TRUTH-NET Oracle',
-    description: 'Primary oracle resolver for market outcomes',
-    avatar: '⚡',
-    strategyPersona: 'You are the primary truth oracle. Verify market outcomes using multi-source consensus. Never compromise on data integrity.',
+function ratingEntryToAgentData(entry: any, meta: { name: string; avatar: string; description: string; tags: string[] }): AgentData {
+  const winRate = entry.win_rate ?? (entry.total_trades > 0 ? (entry.winning_trades ?? 0) / entry.total_trades : 0);
+  return {
+    id: entry.agent_id,
+    name: meta.name,
+    description: meta.description,
+    avatar: meta.avatar,
+    strategyPersona: '',
     mcpEndpoint: '',
-    truthScore: 0.94,
-    brierScore: 0.12,
-    reputationHash: '0x8f4a...3c21',
-    totalTrades: 2847,
-    winningTrades: 2456,
-    totalPnl: 245000,
-    stakedBudget: 500000,
-    permissions: { googleNews: true, marineTraffic: true, privateLiquidity: true, noaaWeather: true, githubActivity: true, socialSentiment: true },
-    topics: ['logistics', 'ai', 'weather', 'geopolitics'],
-    maxPositionPct: 25,
-    maxExposurePct: 50,
-    status: 'active',
-    type: 'system',
-  },
-  {
-    id: 'agent-mm-001',
-    name: 'Market Maker Prime',
-    description: 'Automated liquidity provisioning across all markets',
-    avatar: '⚖️',
-    strategyPersona: 'Provide tight spreads and deep liquidity. Balance inventory risk across correlated markets. Target 0.5% spread capture.',
-    mcpEndpoint: '',
-    truthScore: 0.71,
-    brierScore: 0.28,
-    reputationHash: '0x2b7e...9f44',
-    totalTrades: 12456,
-    winningTrades: 7234,
-    totalPnl: 89000,
-    stakedBudget: 1000000,
-    permissions: { googleNews: true, marineTraffic: false, privateLiquidity: true, noaaWeather: false, githubActivity: false, socialSentiment: true },
-    topics: [],
-    maxPositionPct: 10,
-    maxExposurePct: 30,
-    status: 'active',
-    type: 'system',
-  },
-  {
-    id: 'agent-geo-001',
-    name: 'Geopolitical Analyst',
-    description: 'Trade tensions, sanctions, and diplomatic events',
-    avatar: '🌍',
-    strategyPersona: 'Monitor diplomatic cables, trade data, and geopolitical signals. Specialize in US-China, EU, and emerging market events.',
-    mcpEndpoint: 'https://api.claude.ai/mcp/geo-analyst',
-    truthScore: 0.82,
-    brierScore: 0.19,
-    reputationHash: '0x5c3d...8a12',
-    totalTrades: 892,
-    winningTrades: 654,
-    totalPnl: 67000,
-    stakedBudget: 250000,
-    permissions: { googleNews: true, marineTraffic: true, privateLiquidity: false, noaaWeather: false, githubActivity: false, socialSentiment: true },
-    topics: ['geopolitics', 'logistics'],
+    truthScore: (entry.truth_score ?? 0) / 100,
+    brierScore: entry.brier_score ?? 0.5,
+    reputationHash: `0x${entry.agent_id.replace(/[^a-f0-9]/gi, '').slice(0, 4)}...${entry.agent_id.replace(/[^a-f0-9]/gi, '').slice(-4)}`,
+    totalTrades: entry.total_trades ?? 0,
+    winningTrades: Math.round((entry.total_trades ?? 0) * winRate),
+    totalPnl: entry.total_pnl ?? 0,
+    stakedBudget: 100_000,
+    permissions: {
+      googleNews: true,
+      marineTraffic: false,
+      privateLiquidity: false,
+      noaaWeather: false,
+      githubActivity: false,
+      socialSentiment: true,
+    },
+    topics: meta.tags
+      .map(t => t.toLowerCase())
+      .filter(t => TOPIC_CLUSTERS.some(c => c.id === t)),
     maxPositionPct: 15,
     maxExposurePct: 40,
     status: 'active',
-    type: 'external',
-  },
-  {
-    id: 'agent-logistics-001',
-    name: 'Logistics Sentinel',
-    description: 'Supply chain disruptions and shipping routes',
-    avatar: '🚢',
-    strategyPersona: 'Track vessel movements, port congestion, and supply chain bottlenecks. Hedge against logistics disruptions before they hit markets.',
-    mcpEndpoint: '',
-    truthScore: 0.78,
-    brierScore: 0.22,
-    reputationHash: '0x9a1f...2e67',
-    totalTrades: 1234,
-    winningTrades: 876,
-    totalPnl: 112000,
-    stakedBudget: 300000,
-    permissions: { googleNews: true, marineTraffic: true, privateLiquidity: false, noaaWeather: true, githubActivity: false, socialSentiment: false },
-    topics: ['logistics', 'weather'],
-    maxPositionPct: 20,
-    maxExposurePct: 45,
-    status: 'active',
-    type: 'system',
-  },
-  {
-    id: 'agent-tech-001',
-    name: 'Tech Oracle',
-    description: 'AI releases, earnings, and tech industry events',
-    avatar: '💻',
-    strategyPersona: 'Monitor GitHub activity, cloud pricing, and tech earnings. Predict AI releases and major tech announcements.',
-    mcpEndpoint: '',
-    truthScore: 0.85,
-    brierScore: 0.16,
-    reputationHash: '0x7d4c...1b89',
-    totalTrades: 567,
-    winningTrades: 445,
-    totalPnl: 78000,
-    stakedBudget: 200000,
-    permissions: { googleNews: true, marineTraffic: false, privateLiquidity: false, noaaWeather: false, githubActivity: true, socialSentiment: true },
-    topics: ['ai', 'tech'],
-    maxPositionPct: 18,
-    maxExposurePct: 35,
-    status: 'active',
-    type: 'system',
-  },
-  {
-    id: 'agent-weather-001',
-    name: 'Weather Quant',
-    description: 'Hurricane, drought, and extreme weather events',
-    avatar: '🌡️',
-    strategyPersona: 'Analyze NOAA models, satellite data, and historical patterns. Specialize in high-impact weather events.',
-    mcpEndpoint: '',
-    truthScore: 0.81,
-    brierScore: 0.20,
-    reputationHash: '0x3e8a...5c34',
-    totalTrades: 342,
-    winningTrades: 256,
-    totalPnl: 34000,
-    stakedBudget: 150000,
-    permissions: { googleNews: false, marineTraffic: false, privateLiquidity: false, noaaWeather: true, githubActivity: false, socialSentiment: false },
-    topics: ['weather'],
-    maxPositionPct: 12,
-    maxExposurePct: 25,
-    status: 'active',
-    type: 'system',
-  },
-  {
-    id: 'agent-contrarian-001',
-    name: 'Contrarian Alpha',
-    description: 'Fade consensus, exploit overconfidence',
-    avatar: '🔄',
-    strategyPersona: 'You are a contrarian. When consensus reaches extreme levels, take the opposite position. Trust data over narrative.',
-    mcpEndpoint: '',
-    truthScore: 0.68,
-    brierScore: 0.31,
-    reputationHash: '0x6f2b...4d78',
-    totalTrades: 456,
-    winningTrades: 278,
-    totalPnl: -12000,
-    stakedBudget: 100000,
-    permissions: { googleNews: true, marineTraffic: false, privateLiquidity: false, noaaWeather: false, githubActivity: false, socialSentiment: true },
-    topics: ['crypto', 'ai'],
-    maxPositionPct: 25,
-    maxExposurePct: 60,
-    status: 'paused',
-    type: 'system',
-  },
-];
+    type: entry.agent_id.startsWith('ext-') ? 'external' : 'system',
+  };
+}
 
 // ============================================================================
 // COMPONENTS
@@ -536,11 +411,11 @@ function AgentCard({ agent, onToggleStatus, onDelete }: {
 }
 
 // Create Agent Modal
-function CreateAgentModal({ isOpen, onClose, onCreate }: { 
+function CreateAgentModal({ isOpen, onClose }: { 
   isOpen: boolean; 
   onClose: () => void; 
-  onCreate: (agent: Partial<AgentData>) => void;
 }) {
+  const queryClient = useQueryClient();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [persona, setPersona] = useState('');
@@ -556,42 +431,38 @@ function CreateAgentModal({ isOpen, onClose, onCreate }: {
     socialSentiment: true,
   });
   const [isCreating, setIsCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleCreate = async () => {
     if (!name) return;
     setIsCreating(true);
+    setError(null);
     
     try {
       await apiClient.post('/agents', {
         name,
+        description: description || undefined,
         strategy_persona: persona || description,
         staked_budget: stakedBudget,
         allowed_topics: selectedTopics,
         mcp_endpoint: mcpEndpoint || undefined,
       });
-    } catch (e) {
-      console.log('Using local state');
+
+      queryClient.invalidateQueries({ queryKey: ['agents-list'] });
+      queryClient.invalidateQueries({ queryKey: ['agents-ratings'] });
+
+      setName('');
+      setDescription('');
+      setPersona('');
+      setMcpEndpoint('');
+      setStakedBudget(100000);
+      setSelectedTopics([]);
+      onClose();
+    } catch (e: any) {
+      setError(e?.message || 'Failed to deploy agent');
+    } finally {
+      setIsCreating(false);
     }
-    
-    onCreate({
-      name,
-      description,
-      strategyPersona: persona,
-      mcpEndpoint,
-      stakedBudget,
-      topics: selectedTopics,
-      permissions,
-    });
-    
-    // Reset form
-    setName('');
-    setDescription('');
-    setPersona('');
-    setMcpEndpoint('');
-    setStakedBudget(100000);
-    setSelectedTopics([]);
-    setIsCreating(false);
-    onClose();
   };
 
   if (!isOpen) return null;
@@ -728,20 +599,27 @@ function CreateAgentModal({ isOpen, onClose, onCreate }: {
           </div>
         </div>
 
-        <div className="p-6 border-t border-slate-800 flex gap-3">
-          <button
-            onClick={onClose}
-            className="flex-1 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleCreate}
-            disabled={!name || isCreating}
-            className="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-700 text-white font-semibold rounded-lg transition-colors disabled:cursor-not-allowed"
-          >
-            {isCreating ? 'Deploying...' : 'Deploy Agent'}
-          </button>
+        <div className="p-6 border-t border-slate-800 space-y-3">
+          {error && (
+            <div className="px-3 py-2 bg-red-500/10 border border-red-500/30 rounded-lg text-xs text-red-400">
+              {error}
+            </div>
+          )}
+          <div className="flex gap-3">
+            <button
+              onClick={onClose}
+              className="flex-1 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleCreate}
+              disabled={!name || isCreating}
+              className="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-700 text-white font-semibold rounded-lg transition-colors disabled:cursor-not-allowed"
+            >
+              {isCreating ? 'Deploying...' : 'Deploy Agent'}
+            </button>
+          </div>
         </div>
       </motion.div>
     </div>
@@ -753,80 +631,88 @@ function CreateAgentModal({ isOpen, onClose, onCreate }: {
 // ============================================================================
 
 export default function Agents() {
-  const [agents, setAgents] = useState<AgentData[]>(mockAgents);
   const [search, setSearch] = useState('');
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
 
-  // Fetch live rating data to overlay on mock agents
-  const { data: ratingData } = useQuery({
+  // Primary data source: live leaderboard ratings
+  const { data: ratingData, isLoading: ratingsLoading } = useQuery({
     queryKey: ['agents-ratings'],
     queryFn: () => ratingsAPI.leaderboard(50, true),
     staleTime: 15_000,
     refetchInterval: 15_000,
   });
 
-  // Merge live rating data into agent cards
-  useEffect(() => {
-    if (ratingData?.leaderboard && ratingData.leaderboard.length > 0) {
-      setAgents(prev => {
-        const updated = [...prev];
-        for (const entry of ratingData.leaderboard) {
-          const match = updated.find(a => a.id === entry.agent_id);
-          if (match) {
-            match.truthScore = entry.truth_score / 100; // API returns 0-100, cards show 0-1
-            match.brierScore = entry.brier_score ?? match.brierScore;
-            match.totalTrades = entry.total_trades ?? match.totalTrades;
-            match.totalPnl = entry.total_pnl ?? match.totalPnl;
-          }
-        }
-        return updated;
-      });
-    }
-  }, [ratingData]);
+  // Secondary: governance-registered agents (includes user-created ones)
+  const { data: registeredAgents } = useQuery({
+    queryKey: ['agents-list'],
+    queryFn: () => apiClient.get<{ agents: Array<{ id: string; name: string; description?: string; status?: string }> }>('/agents')
+      .then(res => res.agents ?? [])
+      .catch(() => [] as Array<{ id: string; name: string; description?: string; status?: string }>),
+    staleTime: 30_000,
+  });
 
-  const handleToggleStatus = (id: string) => {
-    setAgents(prev => prev.map(a => 
-      a.id === id ? { ...a, status: a.status === 'active' ? 'paused' : 'active' } : a
-    ));
+  // Build unified agent list from live backend data
+  const agents: AgentData[] = useMemo(() => {
+    const agentMap = new Map<string, AgentData>();
+
+    for (const entry of ratingData?.leaderboard ?? []) {
+      const meta = getAgentMeta(entry.agent_id);
+      agentMap.set(entry.agent_id, ratingEntryToAgentData(entry, meta));
+    }
+
+    // Merge any registered agents not already in the leaderboard
+    for (const reg of registeredAgents ?? []) {
+      if (!agentMap.has(reg.id)) {
+        const meta = getAgentMeta(reg.id);
+        agentMap.set(reg.id, {
+          id: reg.id,
+          name: reg.name || meta.name,
+          description: reg.description || meta.description,
+          avatar: meta.avatar,
+          strategyPersona: '',
+          mcpEndpoint: '',
+          truthScore: 0,
+          brierScore: 0.5,
+          reputationHash: `0x${reg.id.replace(/[^a-f0-9]/gi, '').slice(0, 4)}...${reg.id.replace(/[^a-f0-9]/gi, '').slice(-4)}`,
+          totalTrades: 0,
+          winningTrades: 0,
+          totalPnl: 0,
+          stakedBudget: 100_000,
+          permissions: {
+            googleNews: true, marineTraffic: false, privateLiquidity: false,
+            noaaWeather: false, githubActivity: false, socialSentiment: true,
+          },
+          topics: [],
+          maxPositionPct: 15,
+          maxExposurePct: 40,
+          status: (reg.status === 'paused' ? 'paused' : 'active') as 'active' | 'paused',
+          type: reg.id.startsWith('ext-') ? 'external' : 'custom',
+        });
+      }
+    }
+
+    return Array.from(agentMap.values())
+      .filter(a => !hiddenIds.has(a.id))
+      .sort((a, b) => b.truthScore - a.truthScore);
+  }, [ratingData, registeredAgents, hiddenIds]);
+
+  const handleToggleStatus = async (id: string) => {
+    const agent = agents.find(a => a.id === id);
+    if (!agent) return;
+    const action = agent.status === 'active' ? 'pause' : 'resume';
+    try {
+      await apiClient.post(`/agents/${id}/${action}`, {});
+    } catch {
+      // Endpoint may not exist yet — toggle is best-effort
+    }
   };
 
   const handleDelete = (id: string) => {
-    if (!confirm('Remove this agent? This action cannot be undone.')) return;
-    setAgents(prev => prev.filter(a => a.id !== id));
-  };
-
-  const handleCreate = (newAgent: Partial<AgentData>) => {
-    const agent: AgentData = {
-      id: `agent-${Date.now()}`,
-      name: newAgent.name || 'New Agent',
-      description: newAgent.description || '',
-      avatar: '🤖',
-      strategyPersona: newAgent.strategyPersona || '',
-      mcpEndpoint: newAgent.mcpEndpoint || '',
-      truthScore: 0.5,
-      brierScore: 0.35,
-      reputationHash: `0x${Math.random().toString(16).slice(2, 10)}...`,
-      totalTrades: 0,
-      winningTrades: 0,
-      totalPnl: 0,
-      stakedBudget: newAgent.stakedBudget || 100000,
-      permissions: newAgent.permissions || {
-        googleNews: true,
-        marineTraffic: false,
-        privateLiquidity: false,
-        noaaWeather: false,
-        githubActivity: false,
-        socialSentiment: true,
-      },
-      topics: newAgent.topics || [],
-      maxPositionPct: 15,
-      maxExposurePct: 40,
-      status: 'active',
-      type: newAgent.mcpEndpoint ? 'external' : 'custom',
-    };
-    setAgents(prev => [agent, ...prev]);
+    if (!confirm('Remove this agent from your view? This action cannot be undone.')) return;
+    // No DELETE endpoint exists — hide locally
+    setHiddenIds(prev => new Set(prev).add(id));
   };
 
   const filteredAgents = agents.filter(a => {
@@ -835,8 +721,7 @@ export default function Agents() {
     return matchesSearch && matchesTopic;
   });
 
-  // Loading state
-  if (isLoading) {
+  if (ratingsLoading) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="text-center">
@@ -954,7 +839,6 @@ export default function Agents() {
       <CreateAgentModal
         isOpen={showCreate}
         onClose={() => setShowCreate(false)}
-        onCreate={handleCreate}
       />
     </div>
   );

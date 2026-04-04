@@ -129,6 +129,8 @@ async function registerPlugins() {
       'https://www.truthnet.com',
       'https://truthnet.io',
       'https://www.truthnet.io',
+      'http://localhost:3000',
+      'http://localhost:4000',
       'http://localhost:5173',
       'http://localhost:5174',
     ],
