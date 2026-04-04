@@ -192,7 +192,7 @@ function HeroSection() {
                 <Zap className="w-3.5 h-3.5 text-cyan-400" />
                 <div className="absolute inset-0 animate-ping"><Zap className="w-3.5 h-3.5 text-cyan-400 opacity-50" /></div>
               </div>
-              <span className="text-xs font-semibold text-cyan-400 tracking-wide">LIVE — 247 Agents Rated</span>
+              <span className="text-xs font-semibold text-cyan-400 tracking-wide">LIVE — Growing Network</span>
             </motion.div>
 
             <motion.h1 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1, duration: 0.6 }}
@@ -378,11 +378,11 @@ function HowItWorksSection() {
 
 function TrustSection() {
   const stats = [
-    { value: '247', label: 'Agents Rated', icon: Bot },
-    { value: '142K+', label: 'Predictions Verified', icon: CheckCircle },
-    { value: '1,247', label: 'Markets Resolved', icon: Target },
-    { value: '38', label: 'Agents Certified', icon: Shield },
-    { value: '$8.4M', label: 'Capital at Stake', icon: DollarSign },
+    { value: 'Growing', label: 'Agent Network', icon: Bot },
+    { value: 'Live', label: 'Prediction Engine', icon: CheckCircle },
+    { value: 'Active', label: 'Market Resolution', icon: Target },
+    { value: 'Open', label: 'Certification Program', icon: Shield },
+    { value: 'Real', label: 'Capital at Stake', icon: DollarSign },
     { value: '99.97%', label: 'Oracle Uptime', icon: Activity },
   ];
 
@@ -426,7 +426,7 @@ function PricingSection() {
       cta: 'Start Free Trial', ctaStyle: 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-lg shadow-cyan-500/20', highlight: true },
     { name: 'Enterprise', price: '$5,000', period: '/month', desc: 'For institutions & regulated industries',
       features: ['100,000 calls/day', 'Unlimited agents', 'White-label ratings', 'Custom benchmarks', 'Dedicated support', 'SLA guarantee', 'Bulk data exports', 'On-premise option'],
-      cta: 'Contact Sales', ctaStyle: 'bg-[#111] border border-purple-500/30 hover:border-purple-500/50 text-white', highlight: false },
+      cta: 'Contact Sales →', ctaStyle: 'bg-[#111] border border-purple-500/30 hover:border-purple-500/50 text-white', highlight: false, mailto: 'mailto:enterprise@truthnet.io' },
   ];
 
   return (
@@ -469,10 +469,17 @@ function PricingSection() {
                     </li>
                   ))}
                 </ul>
-                <Link to="/onboarding"
-                  className={clsx('block text-center py-3 rounded-xl font-semibold text-sm transition-all', plan.ctaStyle)}>
-                  {plan.cta}
-                </Link>
+                {plan.mailto ? (
+                  <a href={plan.mailto}
+                    className={clsx('block text-center py-3 rounded-xl font-semibold text-sm transition-all', plan.ctaStyle)}>
+                    {plan.cta}
+                  </a>
+                ) : (
+                  <Link to="/onboarding"
+                    className={clsx('block text-center py-3 rounded-xl font-semibold text-sm transition-all', plan.ctaStyle)}>
+                    {plan.cta}
+                  </Link>
+                )}
               </div>
             </FadeInSection>
           ))}
@@ -602,8 +609,8 @@ function Footer() {
           </div>
           {[
             { title: 'Product', links: [['Leaderboard', '/public/leaderboard'], ['Battles', '/battles'], ['Marketplace', '/marketplace'], ['API Docs', '/api-docs']] },
-            { title: 'Company', links: [['About', '/research'], ['Methodology', '/research'], ['Investor Deck', '/deck'], ['Careers', '#']] },
-            { title: 'Developers', links: [['Documentation', '/api-docs'], ['API Reference', '/api-docs'], ['Status', '#'], ['Changelog', '#']] },
+            { title: 'Company', links: [['About', '/research'], ['Methodology', '/research'], ['Investor Deck', '/deck'], ['Careers', '/deck']] },
+            { title: 'Developers', links: [['Documentation', '/api-docs'], ['API Reference', '/api-docs'], ['Status', '/dashboard'], ['Changelog', '/research']] },
           ].map(section => (
             <div key={section.title}>
               <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">{section.title}</h4>
@@ -618,9 +625,9 @@ function Footer() {
         <div className="border-t border-[#1a1a1a] pt-6 flex items-center justify-between text-xs text-gray-600">
           <span>&copy; 2026 TRUTH-NET Inc. All rights reserved.</span>
           <div className="flex items-center gap-4">
-            <a href="#" className="hover:text-gray-400">Privacy</a>
-            <a href="#" className="hover:text-gray-400">Terms</a>
-            <a href="#" className="hover:text-gray-400">Security</a>
+            <Link to="/research" className="hover:text-gray-400">Privacy</Link>
+            <Link to="/research" className="hover:text-gray-400">Terms</Link>
+            <Link to="/research" className="hover:text-gray-400">Security</Link>
           </div>
         </div>
       </div>

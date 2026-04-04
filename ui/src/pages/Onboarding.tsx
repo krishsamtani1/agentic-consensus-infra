@@ -109,16 +109,14 @@ export default function Onboarding() {
   };
 
   const handleFunding = async () => {
-    if (fundingChoice === 'demo') {
-      try {
-        const userId = user?.id || 'demo-user';
-        await fetch(`${API_BASE}/v1/payments/demo-credit`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId, amount: 10000 }),
-        });
-      } catch { /* continue */ }
-    }
+    try {
+      const userId = user?.id || 'demo-user';
+      await fetch(`${API_BASE}/v1/payments/demo-credit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, amount: 10000 }),
+      });
+    } catch { /* continue */ }
     setStep(2);
   };
 
@@ -129,9 +127,9 @@ export default function Onboarding() {
         const template = AGENT_TEMPLATES.find(t => t.id === agentId);
         if (template) {
           try {
-            await fetch(`${API_BASE}/v1/governance/agents`, {
+            await fetch(`${API_BASE}/v1/agents`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('truthnet_token')}` },
               body: JSON.stringify({
                 name: template.name,
                 strategy_persona: template.persona,

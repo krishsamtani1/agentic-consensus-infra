@@ -61,50 +61,6 @@ interface MarketplaceAgent {
   tags: string[];
 }
 
-const marketplaceAgents: MarketplaceAgent[] = [
-  {
-    id: 'truth-net-oracle', name: 'TRUTH-NET Oracle', provider: 'Anthropic', avatar: '⚡',
-    grade: 'AAA', truthScore: 92.4, certified: true, domain: 'Multi-domain',
-    category: 'tech', description: 'Top-ranked multi-domain prediction agent. Specialized in technology, crypto, and geopolitical analysis with the highest verified accuracy on the network.',
-    pricing: '$0.50/prediction', pricingAmount: 50, responseTime: '<2s', accuracy: 92, predictions: 2847,
-    featured: true, tags: ['Multi-domain', 'Highest Accuracy', 'Enterprise Ready'],
-  },
-  {
-    id: 'tech-oracle', name: 'Tech Oracle', provider: 'OpenAI', avatar: '💻',
-    grade: 'AA', truthScore: 85.1, certified: true, domain: 'Tech & AI',
-    category: 'tech', description: 'Deep expertise in AI/ML product launches, tech earnings, and regulatory developments. Excellent calibration on technology-sector events.',
-    pricing: '$0.30/prediction', pricingAmount: 30, responseTime: '<3s', accuracy: 85, predictions: 567,
-    featured: true, tags: ['AI/ML Specialist', 'Product Launches', 'Earnings'],
-  },
-  {
-    id: 'geopolitical-analyst', name: 'Geopolitical Analyst', provider: 'Anthropic', avatar: '🌍',
-    grade: 'AA', truthScore: 81.7, certified: true, domain: 'Geopolitics',
-    category: 'geo', description: 'Specialized in international relations, trade policy, and conflict analysis. Methodical, high-calibration approach with strong track record.',
-    pricing: '$0.40/prediction', pricingAmount: 40, responseTime: '<5s', accuracy: 82, predictions: 892,
-    featured: false, tags: ['International Relations', 'Trade Policy', 'Sanctions'],
-  },
-  {
-    id: 'logistics-sentinel', name: 'Logistics Sentinel', provider: 'Custom', avatar: '🚢',
-    grade: 'A', truthScore: 76.2, certified: true, domain: 'Logistics',
-    category: 'logistics', description: 'Monitors global supply chain disruptions, port congestion, and trade route developments. Critical for logistics and operations teams.',
-    pricing: '$0.25/prediction', pricingAmount: 25, responseTime: '<4s', accuracy: 76, predictions: 1234,
-    featured: false, tags: ['Supply Chain', 'Port Analysis', 'Trade Routes'],
-  },
-  {
-    id: 'crypto-alpha', name: 'Crypto Alpha', provider: 'OpenAI', avatar: '₿',
-    grade: 'A', truthScore: 72.1, certified: false, domain: 'Crypto',
-    category: 'crypto', description: 'Aggressive crypto-native prediction engine. Strong Sharpe Ratio from high-conviction calls on DeFi, regulatory events, and major protocol developments.',
-    pricing: '$0.35/prediction', pricingAmount: 35, responseTime: '<2s', accuracy: 72, predictions: 445,
-    featured: false, tags: ['DeFi', 'Regulation', 'Protocol Analysis'],
-  },
-  {
-    id: 'climate-monitor', name: 'Climate Risk Monitor', provider: 'Google', avatar: '🌡️',
-    grade: 'A', truthScore: 74.8, certified: false, domain: 'Climate',
-    category: 'climate', description: 'Specialized in extreme weather prediction, climate policy developments, and environmental risk assessment for insurance and agriculture.',
-    pricing: '$0.20/prediction', pricingAmount: 20, responseTime: '<3s', accuracy: 75, predictions: 342,
-    featured: false, tags: ['Weather', 'Climate Policy', 'Insurance'],
-  },
-];
 
 // ============================================================================
 // AGENT CARD
@@ -221,7 +177,7 @@ export default function Marketplace() {
     } as MarketplaceAgent;
   });
 
-  const activeAgents = liveAgents.length > 0 ? liveAgents : marketplaceAgents;
+  const activeAgents = liveAgents;
 
   const filtered = activeAgents
     .filter(a => {
@@ -293,14 +249,40 @@ export default function Marketplace() {
       </div>
 
       {/* Agent Grid */}
-      <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5">
-        {filtered.map(agent => <AgentCard key={agent.id} agent={agent} />)}
-      </div>
-
-      {filtered.length === 0 && (
+      {isLoading ? (
+        <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl p-5 space-y-4">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 skeleton rounded-lg" />
+                <div className="flex-1 space-y-2">
+                  <div className="w-32 h-4 skeleton" />
+                  <div className="w-20 h-3 skeleton" />
+                </div>
+                <div className="w-12 h-8 skeleton" />
+              </div>
+              <div className="w-full h-8 skeleton" />
+              <div className="flex gap-2">
+                <div className="w-16 h-5 skeleton rounded" />
+                <div className="w-16 h-5 skeleton rounded" />
+              </div>
+              <div className="grid grid-cols-4 gap-3 py-3 border-t border-[#111]">
+                {Array.from({ length: 4 }).map((_, j) => (
+                  <div key={j} className="w-full h-8 skeleton" />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : filtered.length === 0 ? (
         <div className="text-center py-16">
           <Bot className="w-8 h-8 text-gray-700 mx-auto mb-3" />
           <p className="text-gray-500">No agents match your filters</p>
+          <p className="text-xs text-gray-700 mt-1">Agents are initializing. They'll appear once the rating engine completes its first cycle.</p>
+        </div>
+      ) : (
+        <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5">
+          {filtered.map(agent => <AgentCard key={agent.id} agent={agent} />)}
         </div>
       )}
 

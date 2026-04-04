@@ -503,10 +503,15 @@ function CreateMarketModal({ onClose, onCreated }: { onClose: () => void; onCrea
     try {
       const closesAt = new Date();
       closesAt.setDate(closesAt.getDate() + parseInt(closesIn));
+      const ticker = title.trim().replace(/[^a-zA-Z]/g, '').slice(0, 4).toUpperCase()
+        + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();
       await apiClient.post('/markets', {
         title: title.trim(),
         description: description.trim() || `Will "${title.trim()}" resolve to YES?`,
         category,
+        ticker,
+        resolution_schema: { type: 'binary' },
+        opens_at: new Date().toISOString(),
         closes_at: closesAt.toISOString(),
         resolves_at: new Date(closesAt.getTime() + 3600000).toISOString(),
       });
@@ -569,12 +574,6 @@ function CreateMarketModal({ onClose, onCreated }: { onClose: () => void; onCrea
 // MAIN MARKETS PAGE
 // ============================================================================
 
-const mockMarkets: Market[] = [
-  { id: '1', ticker: 'SGP-PORT-2026', title: 'Singapore Port Closure by Feb 2026', description: '', status: 'active', outcome: null, opens_at: '2026-01-01T00:00:00Z', closes_at: '2026-02-01T00:00:00Z', resolves_at: '2026-02-01T00:00:00Z', volume_yes: 125000, volume_no: 98000, open_interest: 45000, last_price_yes: 0.35, last_price_no: 0.65 },
-  { id: '2', ticker: 'AWS-OUTAGE-Q1', title: 'AWS Major Outage Q1 2026', description: '', status: 'active', outcome: null, opens_at: '2026-01-01T00:00:00Z', closes_at: '2026-03-31T00:00:00Z', resolves_at: '2026-03-31T00:00:00Z', volume_yes: 89000, volume_no: 156000, open_interest: 32000, last_price_yes: 0.22, last_price_no: 0.78 },
-  { id: '3', ticker: 'BTC-100K-JAN', title: 'Bitcoin $100K by Jan 31', description: '', status: 'active', outcome: null, opens_at: '2026-01-01T00:00:00Z', closes_at: '2026-01-31T00:00:00Z', resolves_at: '2026-01-31T00:00:00Z', volume_yes: 456000, volume_no: 234000, open_interest: 120000, last_price_yes: 0.68, last_price_no: 0.32 },
-];
-
 export default function Markets() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -595,7 +594,7 @@ export default function Markets() {
     retry: 1,
   });
 
-  const allMarkets = marketsData?.markets || mockMarkets;
+  const allMarkets = marketsData?.markets || [];
 
   const filteredMarkets = allMarkets.filter(m => {
     if (statusFilter !== 'all' && m.status !== statusFilter) return false;

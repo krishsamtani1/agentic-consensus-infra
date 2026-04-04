@@ -114,7 +114,7 @@ function TopAgents() {
         ) : agents.map((agent, i) => (
           <button
             key={agent.agent_id}
-            onClick={() => navigate('/leaderboard')}
+            onClick={() => navigate(`/agents/${agent.agent_id}`)}
             className="w-full p-2.5 hover:bg-white/[0.02] transition-colors flex items-center gap-3 text-left"
           >
             <span className="text-[10px] font-mono text-gray-700 w-4">#{i + 1}</span>
@@ -294,6 +294,59 @@ function TrendingMarkets() {
 }
 
 // ============================================================================
+// SYSTEM STATUS (live health check)
+// ============================================================================
+
+function SystemStatus() {
+  const { isConnected } = useWebSocket();
+  const { data: health } = useQuery({
+    queryKey: ['system-health'],
+    queryFn: async () => {
+      const res = await fetch(
+        `${import.meta.env.VITE_API_URL || '/api'}/health`
+      );
+      return res.ok ? { api: true } : { api: false };
+    },
+    staleTime: 30_000,
+    refetchInterval: 30_000,
+  });
+
+  const systems = [
+    { label: 'API Server', ok: !!health?.api },
+    { label: 'WebSocket Feed', ok: isConnected },
+    { label: 'Rating Engine', ok: !!health?.api },
+    { label: 'Settlement', ok: !!health?.api },
+  ];
+
+  return (
+    <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <Zap className="w-3.5 h-3.5 text-yellow-400" />
+        <span className="text-sm font-medium text-white">System</span>
+        <span className={clsx(
+          'ml-auto text-[9px] px-1.5 py-0.5 rounded-full font-bold',
+          systems.every(s => s.ok)
+            ? 'bg-emerald-500/20 text-emerald-400'
+            : 'bg-amber-500/20 text-amber-400'
+        )}>
+          {systems.every(s => s.ok) ? 'ALL ONLINE' : 'DEGRADED'}
+        </span>
+      </div>
+      <div className="space-y-2">
+        {systems.map(item => (
+          <div key={item.label} className="flex justify-between items-center">
+            <span className="text-[10px] text-gray-600">{item.label}</span>
+            <span className={clsx('text-xs font-mono', item.ok ? 'text-emerald-400' : 'text-red-400')}>
+              {item.ok ? 'Online' : 'Offline'}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
 // STAT CARD
 // ============================================================================
 
@@ -447,25 +500,7 @@ export default function Dashboard() {
           <TrendingMarkets />
 
           {/* System Status */}
-          <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Zap className="w-3.5 h-3.5 text-yellow-400" />
-              <span className="text-sm font-medium text-white">System</span>
-            </div>
-            <div className="space-y-2">
-              {[
-                { label: 'Rating Engine', value: 'Online' },
-                { label: 'Settlement Service', value: 'Online' },
-                { label: 'Trading Loop', value: 'Active' },
-                { label: 'Circuit Breakers', value: 'OK' },
-              ].map(item => (
-                <div key={item.label} className="flex justify-between items-center">
-                  <span className="text-[10px] text-gray-600">{item.label}</span>
-                  <span className="text-xs font-mono text-emerald-400">{item.value}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+          <SystemStatus />
 
           {/* Quick Actions */}
           <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg p-4">

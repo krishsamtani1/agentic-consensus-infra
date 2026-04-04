@@ -330,22 +330,22 @@ function RoadmapSlide() {
       <h2 className="text-3xl font-black text-white mb-8">12-Month Roadmap</h2>
       <div className="space-y-4">
         {[
-          { quarter: 'Q1 2026', title: 'Foundation', items: ['PostgreSQL persistence', 'Python SDK (pip install truthnet)', 'Batch prediction API', 'Weekly Model Report Card blog'], status: 'active' },
-          { quarter: 'Q2 2026', title: 'Distribution', items: ['LangChain/LlamaIndex integration', 'GitHub Action for CI/CD benchmarking', 'Slack/Teams notification bot', '1,000 registered agents target'], status: 'upcoming' },
+          { quarter: 'Q1 2026', title: 'Foundation', items: ['Full-stack platform live', 'A2A + MCP protocol support', 'Multi-LLM rating engine', 'Public agent profiles & badges'], status: 'done' },
+          { quarter: 'Q2 2026', title: 'Distribution', items: ['Python/TypeScript SDK launch', 'LangChain/LlamaIndex integration', 'GitHub Action for CI/CD', '1,000 registered agents target'], status: 'active' },
           { quarter: 'Q3 2026', title: 'Enterprise', items: ['Compliance-ready audit logs', 'PDF rating report generation', 'SOC 2 Type II certification', '10 enterprise pilots ($5K+/mo)'], status: 'upcoming' },
           { quarter: 'Q4 2026', title: 'Dominance', items: ['Standards body engagement (NIST, ISO)', 'Insurance partnership (AI risk assessment)', 'International expansion', '$2M+ ARR target'], status: 'upcoming' },
         ].map(item => (
           <div key={item.quarter} className={clsx('flex gap-6 bg-[#0a0a0a] border rounded-xl p-5',
-            item.status === 'active' ? 'border-cyan-500/30' : 'border-[#1a1a1a]'
+            item.status === 'done' ? 'border-emerald-500/30' : item.status === 'active' ? 'border-cyan-500/30' : 'border-[#1a1a1a]'
           )}>
             <div className="w-24 flex-shrink-0">
-              <p className={clsx('text-sm font-bold', item.status === 'active' ? 'text-cyan-400' : 'text-gray-500')}>{item.quarter}</p>
+              <p className={clsx('text-sm font-bold', item.status === 'done' ? 'text-emerald-400' : item.status === 'active' ? 'text-cyan-400' : 'text-gray-500')}>{item.quarter}</p>
               <p className="text-xs text-gray-600">{item.title}</p>
             </div>
             <div className="flex-1 grid grid-cols-2 gap-2">
               {item.items.map(i => (
                 <div key={i} className="flex items-center gap-2">
-                  {item.status === 'active' ? <CheckCircle className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" /> : <div className="w-3.5 h-3.5 border border-gray-700 rounded-full flex-shrink-0" />}
+                  {item.status === 'done' ? <CheckCircle className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" /> : item.status === 'active' ? <CheckCircle className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" /> : <div className="w-3.5 h-3.5 border border-gray-700 rounded-full flex-shrink-0" />}
                   <span className="text-xs text-gray-400">{i}</span>
                 </div>
               ))}

@@ -29,11 +29,10 @@ function ProfileTab() {
   const save = async () => {
     setSaving(true);
     try {
-      await fetch(`${API_BASE}/v1/auth/profile`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('truthnet_token')}` },
-        body: JSON.stringify({ displayName: name, email, organization: org }),
-      });
+      const raw = localStorage.getItem('truthnet_user');
+      const stored = raw ? JSON.parse(raw) : {};
+      const updated = { ...stored, displayName: name, email, organization: org };
+      localStorage.setItem('truthnet_user', JSON.stringify(updated));
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch {}
@@ -80,11 +79,11 @@ function SubscriptionTab() {
       const res = await fetch(`${API_BASE}/v1/payments/subscribe`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('truthnet_token')}` },
-        body: JSON.stringify({ userId: user?.id, tier: planId }),
+        body: JSON.stringify({ userId: user?.id, plan: planId }),
       });
       const data = await res.json();
-      if (data.data?.checkoutUrl) {
-        window.location.href = data.data.checkoutUrl;
+      if (data.data?.url) {
+        window.location.href = data.data.url;
       }
     } catch {}
   };

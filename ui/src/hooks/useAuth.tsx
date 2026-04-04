@@ -107,6 +107,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       body: JSON.stringify({ email, password }),
     });
 
+    if (!resp.ok) {
+      const text = await resp.text();
+      try { const j = JSON.parse(text); throw new Error(j.error?.message || 'Login failed'); } catch (e) { if (e instanceof Error && e.message !== 'Login failed') throw e; throw new Error(`Login failed (${resp.status})`); }
+    }
     const data = await resp.json();
     if (!data.success) {
       throw new Error(data.error?.message || 'Login failed');
@@ -132,6 +136,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       body: JSON.stringify({ email, password, displayName }),
     });
 
+    if (!resp.ok) {
+      const text = await resp.text();
+      try { const j = JSON.parse(text); throw new Error(j.error?.message || 'Registration failed'); } catch (e) { if (e instanceof Error && e.message !== 'Registration failed') throw e; throw new Error(`Registration failed (${resp.status})`); }
+    }
     const data = await resp.json();
     if (!data.success) {
       throw new Error(data.error?.message || 'Registration failed');
