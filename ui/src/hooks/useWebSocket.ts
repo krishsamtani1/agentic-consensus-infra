@@ -64,7 +64,10 @@ function ensureConnection() {
   if (globalWs?.readyState === WebSocket.OPEN || globalWs?.readyState === WebSocket.CONNECTING) return;
 
   const store = useWSStore.getState();
-  const wsBase = import.meta.env.VITE_WS_URL || 'ws://localhost:3001';
+  const wsBase = import.meta.env.VITE_WS_URL
+    || (window.location.protocol === 'https:'
+      ? `wss://${window.location.host}/ws`
+      : 'ws://localhost:3001');
 
   try {
     const ws = new WebSocket(wsBase);

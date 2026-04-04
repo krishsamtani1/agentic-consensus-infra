@@ -10,7 +10,7 @@
  */
 
 import { WebSocketServer as WSServer, WebSocket } from 'ws';
-import { IncomingMessage } from 'http';
+import { IncomingMessage, Server as HttpServer } from 'http';
 import { EventBus } from '../../events/EventBus.js';
 import { 
   BinaryProtocolEncoder, 
@@ -62,10 +62,14 @@ export class TruthNetWebSocket {
   }
 
   /**
-   * Start WebSocket server
+   * Start WebSocket server on its own port, or attach to an existing HTTP server
    */
-  start(port: number): void {
-    this.wss = new WSServer({ port });
+  start(portOrServer: number | HttpServer): void {
+    const opts = typeof portOrServer === 'number'
+      ? { port: portOrServer }
+      : { server: portOrServer, path: '/ws' };
+
+    this.wss = new WSServer(opts);
 
     this.wss.on('connection', (ws, request) => {
       this.handleConnection(ws, request);
@@ -75,12 +79,14 @@ export class TruthNetWebSocket {
       console.error('[WebSocket] Server error:', error);
     });
 
-    // Start heartbeat
     this.heartbeatInterval = setInterval(() => {
       this.heartbeat();
     }, 30000);
 
-    console.log(`[WebSocket] Server started on port ${port}`);
+    const label = typeof portOrServer === 'number'
+      ? `port ${portOrServer}`
+      : 'shared HTTP server (path: /ws)';
+    console.log(`[WebSocket] Server started on ${label}`);
   }
 
   /**

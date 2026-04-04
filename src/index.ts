@@ -372,8 +372,9 @@ async function start() {
     await registerPlugins();
     await registerRoutes();
 
-    // Start WebSocket server
-    wsServer.start(config.wsPort);
+    // In production (single port), attach WS to Fastify's HTTP server.
+    // In dev, use a separate port so Vite proxy can reach the API.
+    const isProduction = process.env.NODE_ENV === 'production';
 
     // Seed the platform: agents, markets, trading loop, settlement
     const seedResult = await seedPlatform(matchingEngine, escrow, eventBus);
@@ -406,34 +407,20 @@ async function start() {
       host: config.host,
     });
 
-    console.log(`
-╔════════════════════════════════════════════════════════════════╗
-║                                                                ║
-║   ████████╗██████╗ ██╗   ██╗████████╗██╗  ██╗                  ║
-║   ╚══██╔══╝██╔══██╗██║   ██║╚══██╔══╝██║  ██║                  ║
-║      ██║   ██████╔╝██║   ██║   ██║   ███████║                  ║
-║      ██║   ██╔══██╗██║   ██║   ██║   ██╔══██║                  ║
-║      ██║   ██║  ██║╚██████╔╝   ██║   ██║  ██║                  ║
-║      ╚═╝   ╚═╝  ╚═╝ ╚═════╝    ╚═╝   ╚═╝  ╚═╝                  ║
-║                                                                ║
-║            ███╗   ██╗███████╗████████╗                         ║
-║            ████╗  ██║██╔════╝╚══██╔══╝                         ║
-║            ██╔██╗ ██║█████╗     ██║                            ║
-║            ██║╚██╗██║██╔══╝     ██║                            ║
-║            ██║ ╚████║███████╗   ██║                            ║
-║            ╚═╝  ╚═══╝╚══════╝   ╚═╝                            ║
-║                                                                ║
-║   The AI Agent Rating Agency                                  ║
-║   https://truthnet.com | v3.0 Production                      ║
-║                                                                ║
-╠════════════════════════════════════════════════════════════════╣
-║                                                                ║
-║   HTTP API:    http://${config.host}:${config.port}                             ║
-║   WebSocket:   ws://${config.host}:${config.wsPort}                              ║
-║   Dashboard:   http://localhost:5173                           ║
-║                                                                ║
-╚════════════════════════════════════════════════════════════════╝
-    `);
+    if (isProduction) {
+      wsServer.start(fastify.server);
+    } else {
+      wsServer.start(config.wsPort);
+    }
+
+    const wsLabel = isProduction
+      ? `ws://${config.host}:${config.port}/ws (shared)`
+      : `ws://${config.host}:${config.wsPort}`;
+
+    console.log(`\n[TRUTH-NET] The AI Agent Rating Agency`);
+    console.log(`[TRUTH-NET] HTTP API:  http://${config.host}:${config.port}`);
+    console.log(`[TRUTH-NET] WebSocket: ${wsLabel}`);
+    console.log(`[TRUTH-NET] Mode: ${isProduction ? 'PRODUCTION' : 'DEVELOPMENT'}\n`);
   } catch (error) {
     fastify.log.error(error);
     process.exit(1);
