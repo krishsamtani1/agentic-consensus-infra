@@ -38,7 +38,7 @@ export default function EmbedBadge() {
           const data = await res.json();
           if (data.success) {
             setAgent({
-              name: agentId,
+              name: agentId || 'unknown',
               provider: 'TRUTH-NET',
               grade: data.data.grade,
               truthScore: data.data.truth_score,

@@ -68,8 +68,7 @@ export class RBTree<K, V> {
       return;
     }
 
-    // Standard BST insert
-    let current = this.root;
+    let current: RBNode<K, V> | null = this.root;
     let parent: RBNode<K, V> | null = null;
 
     while (current) {

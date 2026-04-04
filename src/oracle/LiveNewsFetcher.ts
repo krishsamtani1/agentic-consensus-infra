@@ -404,7 +404,7 @@ async function fetchFromNewsAPI(
     const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(q)}&sortBy=publishedAt&pageSize=10&apiKey=${apiKey}`;
 
     const response = await fetch(url);
-    const data = await response.json();
+    const data = (await response.json()) as any;
 
     if (data.status !== 'ok' || !data.articles) {
       console.error('[LiveNews] NewsAPI error:', data);
@@ -451,11 +451,11 @@ async function fetchFromGNews(
       'science': 'science OR space',
     };
 
-    const q = categoryMap[category];
+    const q = categoryMap[category] || '';
     const url = `https://gnews.io/api/v4/search?q=${encodeURIComponent(q)}&lang=en&max=10&apikey=${apiKey}`;
 
     const response = await fetch(url);
-    const data = await response.json();
+    const data = (await response.json()) as any;
 
     if (!data.articles) {
       console.error('[LiveNews] GNews error:', data);

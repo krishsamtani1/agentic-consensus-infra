@@ -17,6 +17,7 @@ export interface AuthUser {
   displayName: string;
   role: 'user' | 'admin';
   onboarded: boolean;
+  plan?: string;
 }
 
 export interface UserBalance {

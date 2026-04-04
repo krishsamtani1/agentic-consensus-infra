@@ -262,9 +262,9 @@ async function registerRoutes() {
     // External Agent API (the core product API for real users)
     await app.register(createExternalAgentRoutes(matchingEngine, escrow, eventBus));
     
-    // Initialize Doctrine Engine and Agent Manager
-    const doctrineEngine = getDoctrineEngine(eventBus);
-    const agentManager = getAgentManager(eventBus);
+    // Initialize Doctrine Engine and Agent Manager (side-effect: register listeners / singletons)
+    void getDoctrineEngine(eventBus);
+    void getAgentManager(eventBus);
     console.log('[TRUTH-NET] Doctrine Engine and Agent Manager initialized');
 
     // Wash trading status endpoint
@@ -308,24 +308,24 @@ async function registerRoutes() {
 // ERROR HANDLING
 // ============================================================================
 
-fastify.setErrorHandler((error, request, reply) => {
+fastify.setErrorHandler((error, _request, reply) => {
   fastify.log.error(error);
 
   // Handle validation errors
-  if (error.validation) {
+  if ((error as any).validation) {
     return reply.status(400).send({
       success: false,
       error: {
         code: 'VALIDATION_ERROR',
         message: 'Request validation failed',
-        details: error.validation,
+        details: (error as any).validation,
       },
       timestamp: new Date().toISOString(),
     });
   }
 
   // Handle rate limit errors
-  if (error.statusCode === 429) {
+  if ((error as any).statusCode === 429) {
     return reply.status(429).send({
       success: false,
       error: {
@@ -337,12 +337,12 @@ fastify.setErrorHandler((error, request, reply) => {
   }
 
   // Generic error response
-  return reply.status(error.statusCode ?? 500).send({
+  return reply.status((error as any).statusCode ?? 500).send({
     success: false,
     error: {
       code: 'INTERNAL_ERROR',
       message: process.env.NODE_ENV === 'development'
-        ? error.message
+        ? (error as Error).message
         : 'An internal error occurred',
     },
     timestamp: new Date().toISOString(),

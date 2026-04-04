@@ -45,7 +45,7 @@ export class BinaryEncoder {
   private buffer: ArrayBuffer;
   private view: DataView;
   private offset: number = 0;
-  private textEncoder: TextEncoder;
+  private textEncoder: InstanceType<typeof TextEncoder>;
 
   constructor(initialSize: number = 4096) {
     this.buffer = new ArrayBuffer(initialSize);
@@ -288,7 +288,7 @@ export class BinaryEncoder {
 export class BinaryDecoder {
   private view: DataView;
   private offset: number = 0;
-  private textDecoder: TextDecoder;
+  private textDecoder: InstanceType<typeof TextDecoder>;
 
   constructor(buffer: ArrayBuffer | Uint8Array) {
     if (buffer instanceof Uint8Array) {

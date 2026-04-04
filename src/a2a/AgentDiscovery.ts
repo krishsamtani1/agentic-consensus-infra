@@ -83,7 +83,7 @@ export interface A2AResponse {
 const SYSTEM_AGENTS: Map<string, AgentCard> = new Map();
 
 // Pre-populate system agents
-const DEFAULT_SYSTEM_AGENTS: Partial<AgentCard>[] = [
+const DEFAULT_SYSTEM_AGENTS: (Omit<Partial<AgentCard>, 'metadata'> & { metadata?: Partial<AgentCard['metadata']> })[] = [
   {
     id: 'truth-net-oracle',
     name: 'TRUTH-NET Oracle',
@@ -582,7 +582,7 @@ export function createA2ARoutes(eventBus: EventBus) {
       reply.raw.write(`event: connected\ndata: ${JSON.stringify({ agent_id: agent.id, timestamp: new Date().toISOString() })}\n\n`);
       
       // Subscribe to agent events
-      const unsubscribe = eventBus.subscribe(`agent.${agent.id}.*`, (event: any) => {
+      const subscriptionId = eventBus.subscribe(`agent.${agent.id}.*`, (event: any) => {
         reply.raw.write(`event: update\ndata: ${JSON.stringify(event)}\n\n`);
       });
       
@@ -594,7 +594,7 @@ export function createA2ARoutes(eventBus: EventBus) {
       // Cleanup on close
       request.raw.on('close', () => {
         clearInterval(heartbeat);
-        unsubscribe();
+        eventBus.unsubscribe(subscriptionId);
       });
     });
     

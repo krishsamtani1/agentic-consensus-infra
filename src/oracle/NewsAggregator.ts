@@ -514,7 +514,7 @@ export class NewsAggregator {
 // PANAMA CANAL DEMO SCENARIO
 // ============================================================================
 
-export function createPanamaCanalScenario(eventBus: EventBus): {
+export function createPanamaCanalScenario(_eventBus: EventBus): {
   headlines: Headline[];
   markets: Market[];
 } {

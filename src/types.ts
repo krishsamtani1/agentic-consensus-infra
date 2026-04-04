@@ -93,7 +93,16 @@ export interface GraphQLResolutionSchema {
   timeout_ms?: number;
 }
 
-export type ResolutionSchema = HttpJsonResolutionSchema | GraphQLResolutionSchema;
+/** Consensus across multiple HTTP JSON sources (see ProductionResolver). */
+export interface MultiSourceResolutionSchema {
+  type: 'multi_source';
+  sources: HttpJsonResolutionSchema[];
+}
+
+export type ResolutionSchema =
+  | HttpJsonResolutionSchema
+  | GraphQLResolutionSchema
+  | MultiSourceResolutionSchema;
 
 // ============================================================================
 // CORE ENTITY TYPES

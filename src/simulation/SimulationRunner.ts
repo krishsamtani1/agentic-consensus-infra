@@ -6,11 +6,8 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import {
-  Agent,
-  AgentStatus,
   Market,
   MarketStatus,
-  Order,
   OrderSide,
   OrderType,
   OutcomeToken,

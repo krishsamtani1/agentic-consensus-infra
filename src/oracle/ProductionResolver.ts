@@ -10,7 +10,7 @@
  */
 
 import { EventBus } from '../events/EventBus.js';
-import { Market, MarketStatus, ResolutionSchema } from '../types.js';
+import { Market, MarketStatus } from '../types.js';
 
 // ============================================================================
 // TYPES
@@ -38,7 +38,8 @@ export interface DataSource {
 // DATA SOURCE CONFIGURATIONS
 // ============================================================================
 
-const DATA_SOURCES: Record<string, DataSource> = {
+/** Reserved data-source registry for future specialized resolvers. */
+export const _DATA_SOURCES: Record<string, DataSource> = {
   github: {
     id: 'github',
     name: 'GitHub API',
@@ -157,7 +158,7 @@ function evaluateCondition(
 /**
  * Resolve GitHub-based market
  */
-async function resolveGitHub(
+export async function _resolveGitHub(
   repoPath: string,
   metric: 'stars' | 'issues' | 'releases' | 'commits',
   threshold: number,
@@ -171,7 +172,7 @@ async function resolveGitHub(
     if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
 
     const response = await fetch(`https://api.github.com/repos/${repoPath}`, { headers });
-    const data = await response.json();
+    const data = (await response.json()) as any;
 
     let value: number;
     switch (metric) {
@@ -196,7 +197,7 @@ async function resolveGitHub(
 /**
  * Resolve weather-based market
  */
-async function resolveWeather(
+export async function _resolveWeather(
   lat: number,
   lon: number,
   metric: 'temp' | 'wind' | 'precip' | 'hurricane',
@@ -208,14 +209,14 @@ async function resolveWeather(
     if (!apiKey) {
       // Fallback to NOAA (no key needed)
       const response = await fetch(`https://api.weather.gov/points/${lat},${lon}`);
-      const data = await response.json();
+      const data = (await response.json()) as any;
       return { outcome: null, rawData: data };
     }
 
     const response = await fetch(
       `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${apiKey}&units=imperial`
     );
-    const data = await response.json();
+    const data = (await response.json()) as any;
 
     let value: number;
     switch (metric) {
@@ -309,7 +310,7 @@ export class ProductionResolver {
    * Register a market for resolution tracking
    */
   registerMarket(market: Market): void {
-    if (market.status === MarketStatus.RESOLVED) return;
+    if (market.status === MarketStatus.SETTLED) return;
     this.pendingMarkets.set(market.id, market);
     console.log(`[Resolver] Registered market: ${market.ticker}`);
   }

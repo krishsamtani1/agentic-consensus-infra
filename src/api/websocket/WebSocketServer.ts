@@ -144,10 +144,9 @@ export class TruthNetWebSocket {
         info.messageCount++;
         
         if (isBinary && data instanceof Buffer) {
-          // Handle binary message
-          const decoder = createDecoder(data);
-          const { type, data: msgData } = decoder.parseMessage();
-          this.handleBinaryMessage(clientId, type, msgData);
+          const decoder = createDecoder();
+          const msg = decoder.decode(data);
+          this.handleBinaryMessage(clientId, (msg as any).type, (msg as any).payload);
         } else {
           // Handle JSON message
           const message = JSON.parse(data.toString()) as WSMessage;
@@ -187,7 +186,7 @@ export class TruthNetWebSocket {
         client.info.lastPing = new Date();
         // Send binary heartbeat ack
         if (client.ws.readyState === WebSocket.OPEN) {
-          client.ws.send(this.binaryEncoder.encodeHeartbeat());
+          client.ws.send(this.binaryEncoder.encode(MessageType.HEARTBEAT, null));
         }
         break;
 
@@ -386,31 +385,46 @@ export class TruthNetWebSocket {
       // Map channel+event to binary message type
       if (channel === 'trades' && event === 'executed') {
         const trade = data as any;
-        return this.binaryEncoder.encodeTrade({
-          id: trade.id ?? '',
-          market_id: trade.market_id ?? '',
-          price: trade.price ?? 0,
-          quantity: trade.quantity ?? 0,
-          buyer_id: trade.buyer_id ?? '',
-          seller_id: trade.seller_id ?? '',
-          timestamp: Date.now(),
-        });
+        return this.binaryEncoder.encodeTrade(
+          trade.id ?? '',
+          trade.market_id ?? '',
+          trade.price ?? 0,
+          trade.quantity ?? 0,
+          'buy',
+          trade.buyer_id ?? '',
+          trade.seller_id ?? '',
+        );
       }
       
       if (channel === 'orderbook' && event === 'snapshot') {
-        return this.binaryEncoder.encodeOrderBookSnapshot(data as any);
+        const ob = data as any;
+        return this.binaryEncoder.encodeOrderBook(
+          ob.market_id ?? '',
+          ob.outcome === 'no' ? 'no' : 'yes',
+          (ob.bids ?? []).map((b: any) => [b.price, b.quantity]),
+          (ob.asks ?? []).map((a: any) => [a.price, a.quantity]),
+          ob.best_bid ?? null,
+          ob.best_ask ?? null,
+        );
       }
 
       if (channel === 'orderbook' && event === 'best') {
-        return this.binaryEncoder.encodeBestBidAsk(data as any);
+        return this.binaryEncoder.encode(MessageType.ORDER_BOOK_TOP, data);
       }
 
       if (channel === 'headlines' && event === 'new') {
-        return this.binaryEncoder.encodeHeadline(data as any);
+        const h = data as any;
+        return this.binaryEncoder.encodeHeadline(
+          h.id ?? '',
+          h.title ?? '',
+          h.category ?? '',
+          h.impactScore ?? 0,
+          h.source ?? '',
+        );
       }
 
       if (channel === 'markets' && event === 'auto_created') {
-        return this.binaryEncoder.encodeAutoMarket(data as any);
+        return this.binaryEncoder.encode(MessageType.MARKET_CREATED, data);
       }
 
       // Fallback: for unknown events, don't send binary (client should use JSON mode)
@@ -428,13 +442,14 @@ export class TruthNetWebSocket {
   broadcastOrderBookUpdate(marketId: string, outcome: string, bids: Array<{ price: number; quantity: number }>, asks: Array<{ price: number; quantity: number }>): void {
     const timestamp = Date.now();
     
-    const binaryData = this.binaryEncoder.encodeOrderBookSnapshot({
-      market_id: marketId,
-      outcome,
-      bids: bids.slice(0, 10),
-      asks: asks.slice(0, 10),
-      timestamp,
-    });
+    const binaryData = this.binaryEncoder.encodeOrderBook(
+      marketId,
+      outcome === 'no' ? 'no' : 'yes',
+      bids.slice(0, 10).map(b => [b.price, b.quantity] as [number, number]),
+      asks.slice(0, 10).map(a => [a.price, a.quantity] as [number, number]),
+      bids[0]?.price ?? null,
+      asks[0]?.price ?? null,
+    );
 
     const jsonMessage: WSEvent = {
       channel: 'orderbook',

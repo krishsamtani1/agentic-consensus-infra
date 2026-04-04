@@ -157,7 +157,7 @@ const MOCK_HEADLINES: Headline[] = [
  */
 async function generateMarketSchemaWithLLM(
   headline: Headline,
-  config: SourcingAgentConfig
+  _config: SourcingAgentConfig
 ): Promise<LLMResponse> {
   // Simulate LLM thinking time
   await new Promise(resolve => setTimeout(resolve, 100 + Math.random() * 200));

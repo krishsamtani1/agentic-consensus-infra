@@ -12,7 +12,6 @@
 import { JSONPath } from 'jsonpath-plus';
 import {
   Market,
-  MarketStatus,
   OutcomeToken,
   ResolutionSchema,
   HttpJsonResolutionSchema,
@@ -249,7 +248,10 @@ export class OracleEngine {
     // Extract value using JSONPath
     let extractedValue: unknown;
     try {
-      const result = JSONPath({ path: schema.json_path, json: rawData });
+      const result = JSONPath({
+        path: schema.json_path,
+        json: rawData as any,
+      }) as unknown as any[];
       extractedValue = result.length > 0 ? result[0] : undefined;
 
       if (extractedValue === undefined) {

@@ -9,7 +9,7 @@
  * - Creating a financial filter for accurate AI models
  */
 
-import { Agent, Trade, OutcomeToken, SettlementResult } from '../types.js';
+import { SettlementResult } from '../types.js';
 import { EventBus } from '../events/EventBus.js';
 
 export interface ReputationConfig {

@@ -124,7 +124,7 @@ async function fetchFromNewsAPI(
     const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(query)}&sortBy=publishedAt&pageSize=10&language=en&apiKey=${apiKey}`;
 
     const response = await fetch(url);
-    const data: NewsAPIResponse = await response.json();
+    const data = (await response.json()) as NewsAPIResponse;
 
     if (data.status !== 'ok' || !data.articles) {
       console.error('[Discovery] NewsAPI error:', data);
@@ -168,7 +168,7 @@ async function fetchFromGNews(
     const url = `https://gnews.io/api/v4/search?q=${encodeURIComponent(query)}&lang=en&max=5&apikey=${apiKey}`;
 
     const response = await fetch(url);
-    const data = await response.json();
+    const data = (await response.json()) as any;
 
     if (!data.articles) {
       console.error('[Discovery] GNews error:', data);
@@ -489,7 +489,7 @@ export class DiscoveryService {
   /**
    * Generate ticker
    */
-  private generateTicker(headline: DiscoveredHeadline, cluster?: TopicCluster): string {
+  private generateTicker(headline: DiscoveredHeadline, _cluster?: TopicCluster): string {
     const prefixes: Record<TopicCategory, string> = {
       'politics': 'POL',
       'tech-drama': 'TECH',

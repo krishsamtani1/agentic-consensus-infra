@@ -416,7 +416,7 @@ export class ReputationLedger {
   // ===========================================================================
   
   private handleTradeExecuted(event: any): void {
-    const { agent_id, pnl, side, price, outcome } = event;
+    const { agent_id, pnl: _pnl, side, price, outcome } = event;
     
     // Record the prediction
     if (agent_id && outcome) {
@@ -428,7 +428,7 @@ export class ReputationLedger {
     const { market_id, outcome, oracle_source } = event;
     
     // Find and verify all predictions for this market
-    for (const [agentId, records] of this.verifications.entries()) {
+    for (const [_agentId, records] of this.verifications.entries()) {
       for (const record of records) {
         if (record.market_id === market_id && !record.oracle_verified) {
           this.verifyPrediction(record.id, outcome, oracle_source);
