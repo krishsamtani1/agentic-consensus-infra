@@ -141,18 +141,31 @@ function SubmitForm({ plan, onBack, onSubmit }: { plan: string; onBack: () => vo
   const [protocol, setProtocol] = useState<'rest' | 'mcp' | 'a2a'>('rest');
   const [selectedCategories, setSelectedCategories] = useState<string[]>(['tech', 'finance']);
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const handleSubmit = async () => {
     setSubmitting(true);
+    setSubmitError(null);
     try {
-      await fetch(`${API_BASE}/v1/benchmark/submit`, {
+      const res = await fetch(`${API_BASE}/v1/benchmark/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('truthnet_token')}` },
         body: JSON.stringify({ agentName, endpoint, protocol, categories: selectedCategories, depth: plan }),
       });
-    } catch {}
-    setSubmitting(false);
-    onSubmit();
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.error || `Submission failed (HTTP ${res.status})`);
+      }
+      const body = await res.json().catch(() => null);
+      if (body && body.success === false) {
+        throw new Error(body.error || 'Submission was rejected by the server');
+      }
+      onSubmit();
+    } catch (e: any) {
+      setSubmitError(e?.message || 'Failed to submit benchmark. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const toggleCategory = (id: string) => {
@@ -233,6 +246,13 @@ function SubmitForm({ plan, onBack, onSubmit }: { plan: string; onBack: () => vo
             <li className="flex items-center gap-2"><CheckCircle className="w-3 h-3 text-emerald-400" />Generate grade and TruthScore</li>
           </ul>
         </div>
+
+        {submitError && (
+          <div className="flex items-center gap-2 px-4 py-3 bg-red-500/10 border border-red-500/30 rounded-xl">
+            <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
+            <p className="text-sm text-red-400">{submitError}</p>
+          </div>
+        )}
 
         <button onClick={handleSubmit} disabled={!agentName || !endpoint || submitting}
           className="w-full py-3 rounded-xl font-semibold bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white transition-all shadow-lg shadow-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed">

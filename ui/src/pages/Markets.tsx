@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { 
-  Plus, Search, Clock, TrendingUp, TrendingDown, ChevronRight,
+  Plus, Search, Clock, ChevronRight,
   Activity, X, AlertCircle, CheckCircle, LayoutGrid, List, ArrowUpDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -9,41 +9,11 @@ import clsx from 'clsx';
 import { apiClient, Market, OrderBook } from '../api/client';
 
 // ============================================================================
-// MINI SPARKLINE
-// ============================================================================
-
-function MiniSparkline({ data, color = '#06b6d4' }: { data: number[]; color?: string }) {
-  if (data.length < 2) return <span className="text-gray-700 text-xs">--</span>;
-
-  const min = Math.min(...data);
-  const max = Math.max(...data);
-  const range = max - min || 1;
-  const w = 60;
-  const h = 20;
-  const points = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * w;
-    const y = h - ((v - min) / range) * h;
-    return `${x},${y}`;
-  }).join(' ');
-
-  return (
-    <svg width={w} height={h} className="inline-block align-middle">
-      <polyline
-        fill="none"
-        stroke={color}
-        strokeWidth="1.5"
-        points={points}
-      />
-    </svg>
-  );
-}
-
-// ============================================================================
 // TABLE VIEW (Bloomberg-style)
 // ============================================================================
 
 function MarketTableView({ markets, onTrade }: { markets: Market[]; onTrade: (m: Market, side: 'yes' | 'no') => void }) {
-  const [sortBy, setSortBy] = useState<'volume' | 'price' | 'ticker' | 'change'>('volume');
+  const [sortBy, setSortBy] = useState<'volume' | 'price' | 'ticker'>('volume');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [prevPrices, setPrevPrices] = useState<Map<string, number>>(new Map());
   const [flashRows, setFlashRows] = useState<Map<string, 'green' | 'red'>>(new Map());
@@ -122,7 +92,6 @@ function MarketTableView({ markets, onTrade }: { markets: Market[]; onTrade: (m:
               <th className="px-3 py-2 text-right text-[10px] font-semibold text-gray-500 uppercase tracking-wider">NO</th>
               <th className="px-3 py-2 text-right text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Spread</th>
               <SortHeader col="volume" label="Volume" className="text-right" />
-              <th className="px-3 py-2 text-right text-[10px] font-semibold text-gray-500 uppercase tracking-wider">24h</th>
               <th className="px-3 py-2 text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Trade</th>
             </tr>
           </thead>
@@ -133,9 +102,6 @@ function MarketTableView({ markets, onTrade }: { markets: Market[]; onTrade: (m:
               const noPrice = 1 - yesPrice;
               const spread = Math.abs(yesPrice - noPrice);
               const flash = flashRows.get(m.id);
-
-              // Fake sparkline data
-              const sparkData = Array.from({ length: 12 }, (_, i) => yesPrice + (Math.random() - 0.5) * 0.1);
 
               return (
                 <tr
@@ -190,12 +156,6 @@ function MarketTableView({ markets, onTrade }: { markets: Market[]; onTrade: (m:
                     <span className="price-cell text-sm text-white">
                       ${(totalVol / 1000).toFixed(1)}K
                     </span>
-                  </td>
-                  <td className="px-3 py-2.5 text-right">
-                    <MiniSparkline
-                      data={sparkData}
-                      color={yesPrice > 0.5 ? '#10b981' : '#ef4444'}
-                    />
                   </td>
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-1 justify-center">
@@ -540,6 +500,12 @@ function CreateMarketModal({ onClose, onCreated }: { onClose: () => void; onCrea
               className="w-full bg-black border border-[#262626] rounded-lg py-3 px-4 text-white placeholder-gray-600 focus:outline-none focus:border-cyan-500" />
           </div>
           <div>
+            <label className="block text-sm font-medium text-gray-400 mb-2">Description (optional)</label>
+            <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Additional context for this market..."
+              rows={2}
+              className="w-full bg-black border border-[#262626] rounded-lg py-3 px-4 text-white placeholder-gray-600 focus:outline-none focus:border-cyan-500 resize-none" />
+          </div>
+          <div>
             <label className="block text-sm font-medium text-gray-400 mb-2">Category</label>
             <select value={category} onChange={e => setCategory(e.target.value)}
               className="w-full bg-black border border-[#262626] rounded-lg py-3 px-4 text-white focus:outline-none focus:border-cyan-500">
@@ -672,15 +638,29 @@ export default function Markets() {
         </div>
       )}
 
+      {/* Error */}
+      {error && !isLoading && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-6 mb-6 flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-red-400 font-medium text-sm">Failed to load markets</p>
+            <p className="text-red-400/70 text-xs mt-1">{error instanceof Error ? error.message : 'An unexpected error occurred'}</p>
+            <button onClick={() => refetch()} className="mt-3 text-xs font-medium px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg transition-colors">
+              Retry
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Content */}
-      {!isLoading && viewMode === 'table' && (
+      {!isLoading && !error && viewMode === 'table' && (
         <MarketTableView
           markets={filteredMarkets}
           onTrade={(m, side) => setTradeModal({ market: m, side })}
         />
       )}
 
-      {!isLoading && viewMode === 'cards' && (
+      {!isLoading && !error && viewMode === 'cards' && (
         <div className="space-y-3">
           {filteredMarkets.map(m => (
             <MarketCard key={m.id} market={m} onTrade={side => setTradeModal({ market: m, side })} />
@@ -688,7 +668,7 @@ export default function Markets() {
         </div>
       )}
 
-      {filteredMarkets.length === 0 && !isLoading && (
+      {filteredMarkets.length === 0 && !isLoading && !error && (
         <div className="text-center py-12">
           <Activity className="w-12 h-12 text-gray-700 mx-auto mb-4" />
           <p className="text-gray-400">No markets found</p>

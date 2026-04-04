@@ -6,13 +6,12 @@
  * Rich data, live feel, actionable insights.
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Trophy, TrendingUp, TrendingDown, Award, Shield,
-  ArrowUp, ArrowDown, Minus, Search, Filter,
-  BarChart3, Target, CheckCircle2, Activity,
-  ChevronRight, Bot, Eye, GitCompare
+  ArrowUp, ArrowDown, Minus, Search,
+  Activity, ChevronRight, GitCompare
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
@@ -20,7 +19,6 @@ import clsx from 'clsx';
 import { getAgentMeta } from '../lib/agentMeta';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
-  AreaChart, Area
 } from 'recharts';
 import { ratingsAPI } from '../api/client';
 
@@ -59,8 +57,21 @@ interface Agent {
   sparkline: number[];
 }
 
-function makeSparkline(base: number): number[] {
-  return Array.from({ length: 14 }, (_, i) => base + (Math.random() - 0.5) * 6 + i * 0.2);
+function hashSeed(str: string): number {
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) {
+    h = ((h << 5) + h + str.charCodeAt(i)) | 0;
+  }
+  return h >>> 0;
+}
+
+function makeSparkline(base: number, agentId: string): number[] {
+  let seed = hashSeed(agentId);
+  const next = () => {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    return (seed / 0x7fffffff);
+  };
+  return Array.from({ length: 14 }, (_, i) => base + (next() - 0.5) * 6 + i * 0.2);
 }
 
 const AGENT_META = new Proxy({} as Record<string, { name: string; avatar: string; provider: string; domain: string }>, {
@@ -108,6 +119,10 @@ export default function Leaderboard() {
   const [sortKey, setSortKey] = useState<'rank' | 'truthScore' | 'brierScore' | 'pnl' | 'trades'>('rank');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
+  useEffect(() => {
+    localStorage.setItem('tn_leaderboard_visited', 'true');
+  }, []);
+
   // Fetch real leaderboard data
   const { data: liveData } = useQuery({
     queryKey: ['leaderboard'],
@@ -142,7 +157,7 @@ export default function Leaderboard() {
       trendDelta: Math.abs(truthScore - 50) * 0.1,
       domain: meta.domain,
       avatar: meta.avatar,
-      sparkline: makeSparkline(truthScore),
+      sparkline: makeSparkline(truthScore, entry.agent_id),
     };
   });
 
@@ -152,7 +167,7 @@ export default function Leaderboard() {
     certified: agents.filter(a => a.certified).length,
     avgTruthScore: agents.length > 0 ? agents.reduce((a, b) => a + b.truthScore, 0) / agents.length : 0,
     totalPredictions: agents.reduce((a, b) => a + b.trades, 0),
-    marketsResolved: liveData?.distribution ? Object.values(liveData.distribution as Record<string, number>).reduce((a: number, b: number) => a + b, 0) : 0,
+    ratedAgents: agents.filter(a => a.grade !== 'NR').length,
   };
 
   const gradeDistData = [
@@ -338,7 +353,7 @@ export default function Leaderboard() {
                 { label: 'Certified', value: networkStats.certified.toString(), color: 'text-emerald-400' },
                 { label: 'Avg TruthScore', value: networkStats.avgTruthScore.toFixed(1), color: 'text-cyan-400' },
                 { label: 'Total Predictions', value: networkStats.totalPredictions.toLocaleString(), color: 'text-white' },
-                { label: 'Rated Agents', value: agents.filter(a => a.grade !== 'NR').length.toString(), color: 'text-white' },
+                { label: 'Rated Agents', value: networkStats.ratedAgents.toString(), color: 'text-white' },
               ].map(s => (
                 <div key={s.label} className="flex items-center justify-between">
                   <span className="text-[10px] text-gray-500">{s.label}</span>

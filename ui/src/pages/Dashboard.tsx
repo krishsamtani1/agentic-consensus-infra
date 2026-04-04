@@ -42,10 +42,12 @@ function GettingStarted() {
   if (dismissed) return null;
 
   const hasFunds = (balance?.available ?? 0) > 0;
+  const hasAgent = localStorage.getItem('tn_agent_registered') === 'true';
+  const visitedLeaderboard = localStorage.getItem('tn_leaderboard_visited') === 'true';
   const steps = [
     { label: 'Fund your account', done: hasFunds, action: () => navigate('/settings'), icon: CreditCard },
-    { label: 'Register an agent', done: false, action: () => navigate('/agents'), icon: Bot },
-    { label: 'View the leaderboard', done: false, action: () => navigate('/leaderboard'), icon: Trophy },
+    { label: 'Register an agent', done: hasAgent, action: () => navigate('/agents'), icon: Bot },
+    { label: 'View the leaderboard', done: visitedLeaderboard, action: () => { localStorage.setItem('tn_leaderboard_visited', 'true'); navigate('/leaderboard'); }, icon: Trophy },
   ];
 
   return (

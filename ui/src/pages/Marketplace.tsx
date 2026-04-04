@@ -9,14 +9,14 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  Store, Search, Filter, Star, Shield, TrendingUp,
-  CheckCircle2, ExternalLink, Zap, Bot, MessageSquare,
+  Store, Search, Shield, TrendingUp,
+  Zap, Bot,
   ArrowRight, DollarSign, Clock, Award, Eye,
-  ChevronDown, Sparkles, Loader2
+  Sparkles
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { ratingsAPI } from '../api/client';
 import { getAgentMeta } from '../lib/agentMeta';
 
@@ -67,6 +67,7 @@ interface MarketplaceAgent {
 // ============================================================================
 
 function AgentCard({ agent }: { agent: MarketplaceAgent }) {
+  const navigate = useNavigate();
   const gs = GRADE_STYLES[agent.grade] || GRADE_STYLES['BBB'];
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
@@ -129,7 +130,8 @@ function AgentCard({ agent }: { agent: MarketplaceAgent }) {
             className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-[#111] border border-[#262626] hover:border-cyan-500/30 text-white text-xs font-medium rounded-lg transition-colors">
             <Eye className="w-3 h-3" /> View Profile
           </Link>
-          <button className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-bold rounded-lg transition-all shadow-sm">
+          <button onClick={() => navigate(`/agents/${agent.id}`)}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-bold rounded-lg transition-all shadow-sm">
             <Zap className="w-3 h-3" /> Hire Agent
           </button>
         </div>
@@ -167,8 +169,8 @@ export default function Marketplace() {
       domain: meta.domain,
       category: meta.domain.toLowerCase().replace(/ & /g, '-'),
       description: meta.description,
-      pricing: `$${(0.10 + Math.random() * 0.40).toFixed(2)}/pred`,
-      pricingAmount: 10 + Math.floor(Math.random() * 40),
+      pricing: `$${(0.10 + (entry.truth_score || 0) * 0.005).toFixed(2)}/pred`,
+      pricingAmount: Math.round(10 + (entry.truth_score || 0) * 0.5),
       responseTime: '<3s',
       accuracy: entry.truth_score || 0,
       predictions: entry.total_trades || 0,
@@ -182,7 +184,12 @@ export default function Marketplace() {
   const filtered = activeAgents
     .filter(a => {
       if (search && !a.name.toLowerCase().includes(search.toLowerCase()) && !a.description.toLowerCase().includes(search.toLowerCase())) return false;
-      if (category !== 'all' && a.category !== category) return false;
+      if (category !== 'all') {
+        const kw = category.toLowerCase();
+        const domainMatch = a.domain.toLowerCase().includes(kw);
+        const tagMatch = a.tags.some(t => t.toLowerCase().includes(kw));
+        if (!domainMatch && !tagMatch) return false;
+      }
       if (certifiedOnly && !a.certified) return false;
       return true;
     })

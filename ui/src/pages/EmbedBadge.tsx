@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { Shield, Zap, ExternalLink } from 'lucide-react';
+import { Shield, Zap, ExternalLink, AlertCircle } from 'lucide-react';
 import clsx from 'clsx';
+import { getAgentMeta } from '../lib/agentMeta';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
@@ -28,27 +29,36 @@ export default function EmbedBadge() {
   const { agentId } = useParams();
   const [agent, setAgent] = useState<BadgeData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!agentId) return;
     async function load() {
       try {
         const res = await fetch(`${API_BASE}/v1/ratings/${agentId}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.success) {
-            setAgent({
-              name: agentId || 'unknown',
-              provider: 'TRUTH-NET',
-              grade: data.data.grade,
-              truthScore: data.data.truth_score,
-              certified: data.data.certified,
-              totalTrades: data.data.performance?.total_trades || 0,
-            });
-          }
+        if (!res.ok) {
+          setError(`Failed to load agent data (HTTP ${res.status})`);
+          setLoading(false);
+          return;
         }
+        const data = await res.json();
+        if (!data.success) {
+          setError(data.error || 'Agent not found');
+          setLoading(false);
+          return;
+        }
+        const meta = getAgentMeta(agentId!);
+        setAgent({
+          name: meta.name,
+          provider: 'TRUTH-NET',
+          grade: data.data.grade,
+          truthScore: data.data.truth_score,
+          certified: data.data.certified,
+          totalTrades: data.data.performance?.total_trades || 0,
+        });
+        setError(null);
       } catch {
-        setAgent({ name: agentId || 'Unknown', provider: 'TRUTH-NET', grade: 'NR', truthScore: 0, certified: false, totalTrades: 0 });
+        setError('Network error — could not reach the rating service');
       } finally {
         setLoading(false);
       }
@@ -58,10 +68,22 @@ export default function EmbedBadge() {
     return () => clearInterval(interval);
   }, [agentId]);
 
-  if (loading || !agent) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-transparent flex items-center justify-center p-2">
         <div className="w-[300px] h-[140px] bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl animate-pulse" />
+      </div>
+    );
+  }
+
+  if (error || !agent) {
+    return (
+      <div className="min-h-screen bg-transparent flex items-center justify-center p-2">
+        <div className="w-[300px] bg-[#0a0a0a] border border-red-500/30 rounded-xl p-4 text-center">
+          <AlertCircle className="w-6 h-6 text-red-400 mx-auto mb-2" />
+          <p className="text-xs text-red-400">{error || 'Agent not found'}</p>
+          <p className="text-[10px] text-gray-600 mt-1">{agentId}</p>
+        </div>
       </div>
     );
   }

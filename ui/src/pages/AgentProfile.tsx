@@ -21,8 +21,16 @@ import {
   BarChart, Bar, Cell
 } from 'recharts';
 import clsx from 'clsx';
-import { ratingsAPI, agentsAPI, type RatingDetail, type Agent } from '../api/client';
+import { ratingsAPI, agentsAPI, apiClient, type RatingDetail, type Agent } from '../api/client';
 import { getAgentMeta } from '../lib/agentMeta';
+
+interface ReasoningEntry {
+  id: string;
+  market_title: string;
+  probability: number;
+  reasoning: string;
+  timestamp: string;
+}
 
 const GRADE_STYLES: Record<string, { text: string; bg: string; border: string; glow: string }> = {
   'AAA': { text: 'text-emerald-400', bg: 'bg-emerald-500/15', border: 'border-emerald-500/30', glow: 'shadow-emerald-500/20' },
@@ -52,18 +60,57 @@ function ScoreBar({ label, value, max = 100, color }: { label: string; value: nu
   );
 }
 
-function generateScoreHistory(currentScore: number): { day: string; score: number }[] {
+function generateSimulatedHistory(currentScore: number): { day: string; score: number }[] {
   const now = new Date();
   return Array.from({ length: 30 }, (_, i) => {
     const d = new Date(now);
     d.setDate(d.getDate() - (29 - i));
-    const drift = (i / 29) * (currentScore - (currentScore - 4));
-    const noise = (Math.random() - 0.5) * 3;
+    const drift = (i / 29) * 4;
     return {
       day: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-      score: Math.max(0, Math.min(100, currentScore - 4 + drift + noise)),
+      score: Math.max(0, Math.min(100, currentScore - 4 + drift)),
     };
   });
+}
+
+function downloadAgentReport(agentId: string, agentName: string, grade: string, truthScore: number, rating: RatingDetail | undefined, agent: Agent | undefined) {
+  const report = {
+    report_type: 'TRUTH-NET Agent Rating Report',
+    generated_at: new Date().toISOString(),
+    agent: {
+      id: agentId,
+      name: agentName,
+      provider: agent?.provider ?? 'Unknown',
+      model: agent?.model ?? 'Unknown',
+      status: agent?.status ?? 'active',
+      created_at: agent?.created_at ?? null,
+    },
+    rating: {
+      truth_score: truthScore,
+      grade,
+      certified: rating?.certified ?? false,
+      components: rating?.components ?? {},
+    },
+    performance: {
+      total_trades: agent?.total_trades ?? rating?.performance?.total_trades ?? 0,
+      winning_trades: agent?.winning_trades ?? 0,
+      win_rate: agent?.win_rate ?? rating?.performance?.win_rate ?? 0,
+      brier_score: agent?.brier_score ?? 0,
+      sharpe_ratio: agent?.sharpe_ratio ?? 0,
+      total_pnl: agent?.total_pnl ?? rating?.performance?.total_pnl ?? 0,
+      max_drawdown: agent?.max_drawdown ?? rating?.performance?.max_drawdown ?? 0,
+    },
+  };
+
+  const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `truthnet-report-${agentId}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 function buildDomainBreakdown(totalTrades: number, brierScore: number) {
@@ -107,6 +154,22 @@ export default function AgentProfile() {
     queryFn: () => agentsAPI.get(agentId!),
     enabled: !!agentId,
     staleTime: 15_000,
+    retry: 1,
+  });
+
+  const { data: historyData } = useQuery({
+    queryKey: ['rating-history', agentId],
+    queryFn: () => ratingsAPI.getHistory(agentId!, 30),
+    enabled: !!agentId,
+    staleTime: 60_000,
+    retry: 1,
+  });
+
+  const { data: reasoningData, isLoading: reasoningLoading } = useQuery({
+    queryKey: ['reasoning', agentId],
+    queryFn: () => apiClient.get<{ entries: ReasoningEntry[] }>(`/v1/reasoning/${agentId}`),
+    enabled: !!agentId,
+    staleTime: 30_000,
     retry: 1,
   });
 
@@ -181,7 +244,14 @@ export default function AgentProfile() {
   const maxDrawdown = agent?.max_drawdown ?? rating?.performance?.max_drawdown ?? 0;
   const activeSince = agent?.created_at ?? '';
 
-  const scoreHistory = generateScoreHistory(truthScore);
+  const realHistory = historyData?.history;
+  const hasRealHistory = realHistory && realHistory.length > 0;
+  const scoreHistory = hasRealHistory
+    ? realHistory.map(h => ({
+        day: new Date(h.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        score: h.score,
+      }))
+    : generateSimulatedHistory(truthScore);
   const domainScores = buildDomainBreakdown(totalTrades, brierScore);
 
   const defaultRating: RatingDetail = {
@@ -280,6 +350,11 @@ export default function AgentProfile() {
                 </AreaChart>
               </ResponsiveContainer>
             </div>
+            {!hasRealHistory && (
+              <p className="text-[10px] text-gray-600 mt-2 text-center">
+                Simulated history — real data will appear as markets resolve
+              </p>
+            )}
           </div>
 
           {/* Domain Breakdown */}
@@ -305,16 +380,40 @@ export default function AgentProfile() {
             </div>
           </div>
 
-          {/* Recent Predictions (placeholder until API supports it) */}
+          {/* Recent Predictions */}
           <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl p-5">
             <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
               <Target className="w-4 h-4 text-cyan-400" /> Recent Predictions
             </h3>
-            <div className="flex flex-col items-center justify-center py-8 text-center">
-              <Target className="w-8 h-8 text-gray-700 mb-3" />
-              <p className="text-sm text-gray-500">Predictions coming soon</p>
-              <p className="text-xs text-gray-700 mt-1">Individual prediction history will appear here once available.</p>
-            </div>
+            {reasoningLoading ? (
+              <div className="flex flex-col items-center justify-center py-8">
+                <Loader2 className="w-6 h-6 text-cyan-400 animate-spin mb-3" />
+                <p className="text-xs text-gray-500">Loading predictions…</p>
+              </div>
+            ) : reasoningData?.entries && reasoningData.entries.length > 0 ? (
+              <div className="space-y-3">
+                {reasoningData.entries.slice(0, 5).map((entry) => (
+                  <div key={entry.id} className="border-b border-[#111] last:border-0 pb-3 last:pb-0">
+                    <div className="flex items-start justify-between gap-3 mb-1">
+                      <span className="text-sm text-white font-medium leading-snug">{entry.market_title}</span>
+                      <span className="text-xs font-mono text-cyan-400 flex-shrink-0">
+                        {(entry.probability * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 line-clamp-2 mb-1">{entry.reasoning}</p>
+                    <span className="text-[10px] text-gray-600">
+                      {new Date(entry.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <Target className="w-8 h-8 text-gray-700 mb-3" />
+                <p className="text-sm text-gray-500">No predictions yet</p>
+                <p className="text-xs text-gray-700 mt-1">Prediction history will appear here once the agent participates in markets.</p>
+              </div>
+            )}
           </div>
         </div>
 
@@ -361,7 +460,9 @@ export default function AgentProfile() {
               className="w-full flex items-center justify-center gap-2 py-2.5 bg-[#111] border border-[#262626] hover:border-cyan-500/30 text-white text-sm font-medium rounded-xl transition-colors">
               <GitCompare className="w-4 h-4 text-cyan-400" /> Compare Agent
             </Link>
-            <button className="w-full flex items-center justify-center gap-2 py-2.5 bg-[#111] border border-[#262626] hover:border-[#444] text-white text-sm font-medium rounded-xl transition-colors">
+            <button
+              onClick={() => downloadAgentReport(agentId, agentName, grade, truthScore, rating, agent)}
+              className="w-full flex items-center justify-center gap-2 py-2.5 bg-[#111] border border-[#262626] hover:border-[#444] text-white text-sm font-medium rounded-xl transition-colors">
               <Download className="w-4 h-4 text-gray-400" /> Download Report
             </button>
           </div>

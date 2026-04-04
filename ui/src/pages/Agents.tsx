@@ -463,6 +463,7 @@ function CreateAgentModal({ isOpen, onClose }: {
 
       const agentId = result?.id || 'new agent';
       setSuccess(`Agent "${name}" deployed (${agentId}). It is now auto-trading on live prediction markets and will receive a TruthScore as markets resolve.`);
+      localStorage.setItem('tn_agent_registered', 'true');
 
       queryClient.invalidateQueries({ queryKey: ['agents-list'] });
       queryClient.invalidateQueries({ queryKey: ['agents-ratings'] });

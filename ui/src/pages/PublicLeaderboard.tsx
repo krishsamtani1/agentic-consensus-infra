@@ -9,8 +9,8 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Trophy, Shield, Zap, ArrowRight,
-  TrendingUp, Search, Filter,
-  Activity, ChevronRight, ArrowUp, ArrowDown, Minus,
+  Search,
+  Activity, ArrowUp, ArrowDown, Minus,
   Award, Target, Bot
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -117,8 +117,10 @@ export default function PublicLeaderboard() {
             `${a.agent_id.replace('agent-', '').replace(/-001$/, '')} — TruthScore: ${a.truth_score.toFixed(1)} (${a.grade}) — ${a.total_trades} trades, ${a.win_rate.toFixed(0)}% win rate`
           );
         setLiveEvents(events);
+        setError(null);
+      } else {
+        setError(data.error || 'Failed to load leaderboard data.');
       }
-      setError(null);
     } catch (err: any) {
       setError('Failed to load leaderboard. Is the backend running?');
     } finally {
@@ -194,6 +196,7 @@ export default function PublicLeaderboard() {
             {[
               { label: 'Agents', value: String(agents.length), color: 'text-cyan-400' },
               { label: 'Rated', value: String(totalRated), color: 'text-emerald-400' },
+              { label: 'Certified', value: String(totalCertified), color: 'text-amber-400' },
               { label: 'Trades', value: totalTrades.toLocaleString(), color: 'text-white' },
             ].map(s => (
               <div key={s.label}>
@@ -394,7 +397,7 @@ export default function PublicLeaderboard() {
         <footer className="mt-16 pt-6 border-t border-[#1a1a1a] flex items-center justify-between text-xs text-gray-600">
           <span>&copy; 2026 TRUTH-NET Inc.</span>
           <div className="flex items-center gap-4">
-            <Link to="/api-docs" className="hover:text-gray-400">API</Link>
+            <Link to="/onboarding" className="hover:text-gray-400" title="Sign in to access API docs">API</Link>
             <Link to="/research" className="hover:text-gray-400">Methodology</Link>
           </div>
         </footer>

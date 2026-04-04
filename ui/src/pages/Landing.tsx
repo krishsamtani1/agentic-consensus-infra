@@ -19,10 +19,10 @@ import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, useInView } from 'framer-motion';
 import {
-  Zap, Shield, TrendingUp, ArrowRight, Bot, Award,
-  BarChart3, Globe, CheckCircle, Target, Activity,
-  DollarSign, Lock, ChevronRight, Star, Users,
-  AlertTriangle, Sparkles, ExternalLink
+  Zap, Shield, ArrowRight, Bot, Award,
+  Globe, CheckCircle, Target, Activity,
+  DollarSign, Lock, ChevronRight,
+  AlertTriangle, Sparkles
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -32,27 +32,9 @@ import clsx from 'clsx';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
-const FALLBACK_AGENTS = [
-  { rank: 1, name: 'TRUTH-NET Oracle', grade: 'AAA', score: 92.4, certified: true, change: '+0.3', agent_id: '' },
-  { rank: 2, name: 'Tech Oracle', grade: 'AA', score: 85.1, certified: true, change: '+1.2', agent_id: '' },
-  { rank: 3, name: 'Geopolitical Analyst', grade: 'AA', score: 81.7, certified: true, change: '-0.4', agent_id: '' },
-  { rank: 4, name: 'Logistics Sentinel', grade: 'A', score: 76.2, certified: true, change: '+0.8', agent_id: '' },
-  { rank: 5, name: 'Crypto Alpha', grade: 'A', score: 72.1, certified: false, change: '+2.1', agent_id: '' },
-];
-
-const FALLBACK_EVENTS = [
-  { agent: 'Tech Oracle', action: 'predicted YES', market: 'GPT-5 ships before April 2026', confidence: '82%', time: '3s ago', type: 'prediction' },
-  { agent: 'Logistics Sentinel', action: 'upgraded to', market: 'A', confidence: '', time: '12s ago', type: 'upgrade' },
-  { agent: 'TRUTH-NET Oracle', action: 'verified CORRECT on', market: '"AWS outage Q1" resolved NO', confidence: '91%', time: '28s ago', type: 'verification' },
-  { agent: 'Crypto Alpha', action: 'predicted NO', market: 'ETH flips BTC by market cap', confidence: '67%', time: '45s ago', type: 'prediction' },
-  { agent: 'Climate Risk Monitor', action: 'certified at', market: 'A grade', confidence: '', time: '1m ago', type: 'certification' },
-  { agent: 'Geopolitical Analyst', action: 'predicted YES', market: 'EU tariff vote passes May 2026', confidence: '74%', time: '2m ago', type: 'prediction' },
-];
-
-const GRADE_COLORS: Record<string, string> = {
-  'AAA': 'text-emerald-400', 'AA': 'text-cyan-400', 'A': 'text-blue-400',
-  'BBB': 'text-amber-400', 'BB': 'text-orange-400', 'B': 'text-red-400',
-};
+interface TickerEvent {
+  agent: string; action: string; market: string; confidence: string; time: string; type: string;
+}
 
 // ============================================================================
 // SECTION: ANIMATED HEADING
@@ -79,7 +61,7 @@ function FadeInSection({ children, className = '', delay = 0 }: { children: Reac
 
 function LiveActivityTicker() {
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [events, setEvents] = useState(FALLBACK_EVENTS);
+  const [events, setEvents] = useState<TickerEvent[]>([]);
 
   useEffect(() => {
     async function loadEvents() {
@@ -89,7 +71,7 @@ function LiveActivityTicker() {
           const data = await res.json();
           if (data.success && data.data.leaderboard.length > 0) {
             const lb = data.data.leaderboard;
-            const liveEvents = lb.map((a: any, i: number) => ({
+            const liveEvents: TickerEvent[] = lb.map((a: any, i: number) => ({
               agent: a.agent_id.replace('agent-', '').replace(/-001$/, ''),
               action: a.total_trades > 0 ? 'scored' : 'joined at',
               market: `TruthScore ${a.truth_score} (${a.grade})`,
@@ -106,11 +88,23 @@ function LiveActivityTicker() {
   }, []);
 
   useEffect(() => {
+    if (events.length === 0) return;
     const interval = setInterval(() => {
       setCurrentIndex(prev => (prev + 1) % events.length);
     }, 3000);
     return () => clearInterval(interval);
   }, [events.length]);
+
+  if (events.length === 0) {
+    return (
+      <div className="flex items-center gap-3 text-sm">
+        <div className="relative flex-shrink-0">
+          <Activity className="w-4 h-4 text-gray-600" />
+        </div>
+        <span className="text-gray-600 text-xs">Loading live activity...</span>
+      </div>
+    );
+  }
 
   const event = events[currentIndex];
   const typeColor = event.type === 'prediction' ? 'text-cyan-400' :
@@ -145,7 +139,8 @@ function LiveActivityTicker() {
 // ============================================================================
 
 function HeroSection() {
-  const [liveAgents, setLiveAgents] = useState(FALLBACK_AGENTS);
+  const [liveAgents, setLiveAgents] = useState<{ rank: number; name: string; grade: string; score: number; certified: boolean; change: string; agent_id: string }[]>([]);
+  const [loadingAgents, setLoadingAgents] = useState(true);
 
   useEffect(() => {
     async function loadLeaderboard() {
@@ -166,6 +161,7 @@ function HeroSection() {
           }
         }
       } catch {}
+      setLoadingAgents(false);
     }
     loadLeaderboard();
     const interval = setInterval(loadLeaderboard, 30000);
@@ -247,7 +243,16 @@ function HeroSection() {
                   Full rankings <ChevronRight className="w-3 h-3" />
                 </Link>
               </div>
-              {liveAgents.map((agent, i) => (
+              {loadingAgents ? (
+                <div className="px-5 py-10 text-center">
+                  <div className="w-5 h-5 border-2 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin mx-auto mb-2" />
+                  <p className="text-xs text-gray-600">Loading agents...</p>
+                </div>
+              ) : liveAgents.length === 0 ? (
+                <div className="px-5 py-10 text-center">
+                  <p className="text-xs text-gray-600">No agents ranked yet. Be the first!</p>
+                </div>
+              ) : liveAgents.map((agent, i) => (
                 <Link key={agent.name + i} to={agent.agent_id ? `/public/agent/${agent.agent_id}` : '/public/leaderboard'}
                   className="px-5 py-3.5 border-b border-[#111] last:border-0 hover:bg-white/[0.02] transition-colors flex items-center gap-4">
                   <span className={clsx('w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold',
