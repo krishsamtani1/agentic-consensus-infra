@@ -101,14 +101,14 @@ const DATA_SOURCES = [
   { id: 'socialSentiment', name: 'Social Sentiment', icon: Globe, description: 'Twitter/Reddit analysis' },
 ];
 
-function ratingEntryToAgentData(entry: any, meta: { name: string; avatar: string; description: string; tags: string[] }): AgentData {
+function ratingEntryToAgentData(entry: any, meta: { name: string; avatar: string; description: string; persona: string; tags: string[] }): AgentData {
   const winRate = entry.win_rate ?? (entry.total_trades > 0 ? (entry.winning_trades ?? 0) / entry.total_trades : 0);
   return {
     id: entry.agent_id,
     name: meta.name,
     description: meta.description,
     avatar: meta.avatar,
-    strategyPersona: '',
+    strategyPersona: meta.persona,
     mcpEndpoint: '',
     truthScore: (entry.truth_score ?? 0) / 100,
     brierScore: entry.brier_score ?? 0.5,
@@ -172,7 +172,6 @@ function AgentCard({ agent, onToggleStatus, onDelete }: {
   onDelete: (id: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [showPermissions, setShowPermissions] = useState(false);
 
   const winRate = agent.totalTrades > 0 
     ? (agent.winningTrades / agent.totalTrades * 100).toFixed(1) 
@@ -340,9 +339,21 @@ function AgentCard({ agent, onToggleStatus, onDelete }: {
                 <p className="text-xs text-gray-500 mb-2 flex items-center gap-1">
                   <Brain className="w-3 h-3" /> Strategy Persona
                 </p>
-                <p className="text-sm text-gray-300 italic bg-black/30 rounded-lg p-3">
-                  "{agent.strategyPersona}"
-                </p>
+                {agent.strategyPersona ? (
+                  <p className="text-sm text-gray-300 italic bg-black/30 rounded-lg p-3">
+                    "{agent.strategyPersona}"
+                  </p>
+                ) : (
+                  <p className="text-sm text-gray-600 bg-black/30 rounded-lg p-3">
+                    No custom persona configured. This agent uses default reasoning.
+                  </p>
+                )}
+              </div>
+
+              {/* Agent ID */}
+              <div className="flex items-center gap-4 text-xs text-gray-500">
+                <span>ID: <code className="text-cyan-400 font-mono">{agent.id}</code></span>
+                <span>Type: <strong className="text-gray-300 capitalize">{agent.type}</strong></span>
               </div>
 
               {/* MCP Endpoint */}
@@ -432,34 +443,42 @@ function CreateAgentModal({ isOpen, onClose }: {
   });
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const handleCreate = async () => {
     if (!name) return;
     setIsCreating(true);
     setError(null);
+    setSuccess(null);
     
     try {
-      await apiClient.post('/agents', {
+      const result = await apiClient.post<any>('/agents', {
         name,
         description: description || undefined,
-        strategy_persona: persona || description,
+        strategy_persona: persona || description || 'General prediction agent',
         staked_budget: stakedBudget,
         allowed_topics: selectedTopics,
         mcp_endpoint: mcpEndpoint || undefined,
       });
 
+      const agentId = result?.id || 'new agent';
+      setSuccess(`Agent "${name}" deployed (${agentId}). It is now auto-trading on live prediction markets and will receive a TruthScore as markets resolve.`);
+
       queryClient.invalidateQueries({ queryKey: ['agents-list'] });
       queryClient.invalidateQueries({ queryKey: ['agents-ratings'] });
 
-      setName('');
-      setDescription('');
-      setPersona('');
-      setMcpEndpoint('');
-      setStakedBudget(100000);
-      setSelectedTopics([]);
-      onClose();
+      setTimeout(() => {
+        setName('');
+        setDescription('');
+        setPersona('');
+        setMcpEndpoint('');
+        setStakedBudget(100000);
+        setSelectedTopics([]);
+        setSuccess(null);
+        onClose();
+      }, 4000);
     } catch (e: any) {
-      setError(e?.message || 'Failed to deploy agent');
+      setError(e?.message || 'Failed to deploy agent. Check the console for details.');
     } finally {
       setIsCreating(false);
     }
@@ -605,6 +624,11 @@ function CreateAgentModal({ isOpen, onClose }: {
               {error}
             </div>
           )}
+          {success && (
+            <div className="px-3 py-2 bg-emerald-500/10 border border-emerald-500/30 rounded-lg text-xs text-emerald-400">
+              {success}
+            </div>
+          )}
           <div className="flex gap-3">
             <button
               onClick={onClose}
@@ -614,10 +638,10 @@ function CreateAgentModal({ isOpen, onClose }: {
             </button>
             <button
               onClick={handleCreate}
-              disabled={!name || isCreating}
+              disabled={!name || isCreating || !!success}
               className="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-700 text-white font-semibold rounded-lg transition-colors disabled:cursor-not-allowed"
             >
-              {isCreating ? 'Deploying...' : 'Deploy Agent'}
+              {isCreating ? 'Deploying...' : success ? 'Deployed!' : 'Deploy Agent'}
             </button>
           </div>
         </div>
@@ -644,12 +668,12 @@ export default function Agents() {
     refetchInterval: 15_000,
   });
 
-  // Secondary: governance-registered agents (includes user-created ones)
+  // Secondary: governance-registered agents (includes user-created ones + full details)
   const { data: registeredAgents } = useQuery({
     queryKey: ['agents-list'],
-    queryFn: () => apiClient.get<{ agents: Array<{ id: string; name: string; description?: string; status?: string }> }>('/agents')
+    queryFn: () => apiClient.get<{ agents: Array<{ id: string; name: string; description?: string; status?: string; strategy_persona?: string; staked_budget?: number; mcp_endpoint?: string; trading_config?: any; metrics?: any }> }>('/agents')
       .then(res => res.agents ?? [])
-      .catch(() => [] as Array<{ id: string; name: string; description?: string; status?: string }>),
+      .catch(() => [] as any[]),
     staleTime: 30_000,
   });
 
@@ -657,40 +681,62 @@ export default function Agents() {
   const agents: AgentData[] = useMemo(() => {
     const agentMap = new Map<string, AgentData>();
 
-    for (const entry of ratingData?.leaderboard ?? []) {
-      const meta = getAgentMeta(entry.agent_id);
-      agentMap.set(entry.agent_id, ratingEntryToAgentData(entry, meta));
+    // Index registered agents by ID for quick lookup
+    const regIndex = new Map<string, any>();
+    for (const reg of registeredAgents ?? []) {
+      regIndex.set(reg.id, reg);
     }
 
-    // Merge any registered agents not already in the leaderboard
-    for (const reg of registeredAgents ?? []) {
-      if (!agentMap.has(reg.id)) {
-        const meta = getAgentMeta(reg.id);
-        agentMap.set(reg.id, {
-          id: reg.id,
-          name: reg.name || meta.name,
-          description: reg.description || meta.description,
-          avatar: meta.avatar,
-          strategyPersona: '',
-          mcpEndpoint: '',
-          truthScore: 0,
-          brierScore: 0.5,
-          reputationHash: `0x${reg.id.replace(/[^a-f0-9]/gi, '').slice(0, 4)}...${reg.id.replace(/[^a-f0-9]/gi, '').slice(-4)}`,
-          totalTrades: 0,
-          winningTrades: 0,
-          totalPnl: 0,
-          stakedBudget: 100_000,
-          permissions: {
-            googleNews: true, marineTraffic: false, privateLiquidity: false,
-            noaaWeather: false, githubActivity: false, socialSentiment: true,
-          },
-          topics: [],
-          maxPositionPct: 15,
-          maxExposurePct: 40,
-          status: (reg.status === 'paused' ? 'paused' : 'active') as 'active' | 'paused',
-          type: reg.id.startsWith('ext-') ? 'external' : 'custom',
-        });
+    for (const entry of ratingData?.leaderboard ?? []) {
+      const meta = getAgentMeta(entry.agent_id);
+      const agent = ratingEntryToAgentData(entry, meta);
+
+      // Enrich with governance data if available
+      const reg = regIndex.get(entry.agent_id);
+      if (reg) {
+        agent.strategyPersona = reg.strategy_persona || agent.strategyPersona;
+        agent.mcpEndpoint = reg.mcp_endpoint || '';
+        agent.stakedBudget = reg.staked_budget || agent.stakedBudget;
+        if (reg.trading_config) {
+          agent.maxPositionPct = reg.trading_config.max_position_pct ?? agent.maxPositionPct;
+          agent.maxExposurePct = reg.trading_config.max_exposure_pct ?? agent.maxExposurePct;
+        }
+        regIndex.delete(entry.agent_id);
       }
+
+      agentMap.set(entry.agent_id, agent);
+    }
+
+    // Add remaining registered agents not in the leaderboard
+    for (const [id, reg] of regIndex) {
+      const meta = getAgentMeta(id);
+      const ts = reg.metrics?.truth_score ?? 0;
+      agentMap.set(id, {
+        id,
+        name: reg.name || meta.name,
+        description: reg.description || meta.description,
+        avatar: meta.avatar,
+        strategyPersona: reg.strategy_persona || meta.persona,
+        mcpEndpoint: reg.mcp_endpoint || '',
+        truthScore: ts > 1 ? ts / 100 : ts,
+        brierScore: reg.metrics?.brier_score ?? 0.5,
+        reputationHash: `0x${id.replace(/[^a-f0-9]/gi, '').slice(0, 4)}...${id.replace(/[^a-f0-9]/gi, '').slice(-4)}`,
+        totalTrades: reg.metrics?.total_trades ?? 0,
+        winningTrades: reg.metrics?.winning_trades ?? 0,
+        totalPnl: reg.metrics?.total_pnl ?? 0,
+        stakedBudget: reg.staked_budget ?? 100_000,
+        permissions: {
+          googleNews: true, marineTraffic: false, privateLiquidity: false,
+          noaaWeather: false, githubActivity: false, socialSentiment: true,
+        },
+        topics: (reg.trading_config?.allowed_topics || [])
+          .map((t: string) => t.toLowerCase())
+          .filter((t: string) => TOPIC_CLUSTERS.some(c => c.id === t)),
+        maxPositionPct: reg.trading_config?.max_position_pct ?? 15,
+        maxExposurePct: reg.trading_config?.max_exposure_pct ?? 40,
+        status: (reg.status === 'paused' ? 'paused' : 'active') as 'active' | 'paused',
+        type: id.startsWith('ext-') ? 'external' : id.startsWith('sys-') ? 'system' : 'custom',
+      });
     }
 
     return Array.from(agentMap.values())

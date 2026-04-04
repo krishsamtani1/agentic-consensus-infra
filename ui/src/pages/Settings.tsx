@@ -73,8 +73,11 @@ function ProfileTab() {
 function SubscriptionTab() {
   const { user } = useAuth();
   const currentPlan = user?.plan || 'free';
+  const [upgradeError, setUpgradeError] = useState<string | null>(null);
+  const [demoCredited, setDemoCredited] = useState(false);
 
   const handleUpgrade = async (planId: string) => {
+    setUpgradeError(null);
     try {
       const res = await fetch(`${API_BASE}/v1/payments/subscribe`, {
         method: 'POST',
@@ -84,13 +87,43 @@ function SubscriptionTab() {
       const data = await res.json();
       if (data.data?.url) {
         window.location.href = data.data.url;
+      } else if (!data.success) {
+        setUpgradeError(data.error?.message || 'Stripe is not configured. Use demo credits below.');
       }
+    } catch {
+      setUpgradeError('Payment processing unavailable. Use demo credits for testing.');
+    }
+  };
+
+  const handleDemoCredit = async () => {
+    try {
+      await fetch(`${API_BASE}/v1/payments/demo-credit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user?.id || 'demo-user', amount: 10000 }),
+      });
+      setDemoCredited(true);
+      setTimeout(() => setDemoCredited(false), 3000);
     } catch {}
   };
 
   return (
     <div className="space-y-6">
       <h3 className="text-lg font-semibold text-white">Subscription Plans</h3>
+
+      {upgradeError && (
+        <div className="flex items-start gap-3 bg-amber-500/10 border border-amber-500/20 rounded-lg p-4">
+          <AlertCircle className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="text-sm text-amber-200">{upgradeError}</p>
+            <button onClick={handleDemoCredit}
+              className="mt-2 px-4 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-medium rounded-lg transition-colors">
+              {demoCredited ? 'Credits Added!' : 'Add $10,000 Demo Credits'}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-4 gap-4">
         {PLANS.map(plan => {
           const isCurrent = plan.id === currentPlan;
