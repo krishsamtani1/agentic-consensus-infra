@@ -25,10 +25,42 @@ function ProfileTab() {
   const [org, setOrg] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const token = localStorage.getItem('truthnet_token');
+    if (!token || token === 'demo-token') return;
+    (async () => {
+      try {
+        const resp = await fetch(`${API_BASE}/v1/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          const profile = data.data;
+          if (profile) {
+            setName(profile.displayName || profile.display_name || '');
+            setEmail(profile.email || '');
+            setOrg(profile.organization || '');
+          }
+        }
+      } catch {
+        setLoadError('Could not load profile from server.');
+      }
+    })();
+  }, []);
 
   const save = async () => {
     setSaving(true);
     try {
+      const token = localStorage.getItem('truthnet_token');
+      if (token && token !== 'demo-token') {
+        await fetch(`${API_BASE}/v1/auth/profile`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ displayName: name, email, organization: org }),
+        });
+      }
       const raw = localStorage.getItem('truthnet_user');
       const stored = raw ? JSON.parse(raw) : {};
       const updated = { ...stored, displayName: name, email, organization: org };
@@ -43,6 +75,9 @@ function ProfileTab() {
     <div className="space-y-6">
       <div>
         <h3 className="text-lg font-semibold text-white mb-4">Profile</h3>
+        {loadError && (
+          <p className="text-xs text-amber-400 mb-3">{loadError}</p>
+        )}
         <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl p-6 space-y-4">
           <div>
             <label className="text-sm text-gray-400 block mb-1">Display Name</label>

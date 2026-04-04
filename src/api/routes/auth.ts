@@ -18,6 +18,7 @@ interface User {
   email: string;
   passwordHash: string;
   displayName: string;
+  avatar?: string;
   role: 'user' | 'admin';
   onboarded: boolean;
   createdAt: Date;
@@ -28,8 +29,26 @@ interface User {
 const users = new Map<string, User>();
 const emailIndex = new Map<string, string>(); // email -> userId
 
-const JWT_SECRET = process.env.JWT_SECRET || 'truthnet-dev-secret-change-in-production';
+const DEFAULT_JWT_SECRET = 'truthnet-dev-secret-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET || DEFAULT_JWT_SECRET;
 const JWT_EXPIRES_IN = '7d';
+
+if (JWT_SECRET === DEFAULT_JWT_SECRET && process.env.NODE_ENV === 'production') {
+  throw new Error(
+    'FATAL: JWT_SECRET is set to the default value in a production environment. ' +
+    'Set a strong, unique JWT_SECRET via environment variables before starting.'
+  );
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function validatePassword(password: string): string | null {
+  if (password.length < 8) return 'Password must be at least 8 characters';
+  if (!/[A-Z]/.test(password)) return 'Password must contain at least one uppercase letter';
+  if (!/[a-z]/.test(password)) return 'Password must contain at least one lowercase letter';
+  if (!/[0-9]/.test(password)) return 'Password must contain at least one number';
+  return null;
+}
 
 // ============================================================================
 // HELPERS
@@ -103,6 +122,26 @@ export function createAuthRoutes(escrow: EscrowLedger, eventBus: EventBus) {
         return reply.status(400).send({
           success: false,
           error: { code: 'INVALID_INPUT', message: 'Email and password are required' },
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      if (!EMAIL_RE.test(email)) {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'INVALID_EMAIL', message: 'Invalid email format' },
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      const passwordError = validatePassword(password);
+      if (passwordError) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: 'WEAK_PASSWORD',
+            message: passwordError + '. Password must be at least 8 characters and include uppercase, lowercase, and a number.',
+          },
           timestamp: new Date().toISOString(),
         });
       }
@@ -267,13 +306,89 @@ export function createAuthRoutes(escrow: EscrowLedger, eventBus: EventBus) {
     });
 
     // -----------------------------------------------------------------------
-    // POST /auth/onboard - Mark user as onboarded
+    // PUT /auth/profile - Update user profile (requires auth)
     // -----------------------------------------------------------------------
-    fastify.post('/auth/onboard', async (
-      request: FastifyRequest<{ Body: { userId: string; objective?: string } }>,
+    fastify.put('/auth/profile', async (
+      request: FastifyRequest<{
+        Body: { displayName?: string; avatar?: string }
+      }>,
       reply: FastifyReply
     ) => {
-      const { userId, objective } = request.body;
+      const authHeader = request.headers.authorization;
+      if (!authHeader?.startsWith('Bearer ')) {
+        return reply.status(401).send({
+          success: false,
+          error: { code: 'UNAUTHORIZED', message: 'Missing or invalid authorization header' },
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      const payload = verifyToken(authHeader.slice(7));
+      if (!payload) {
+        return reply.status(401).send({
+          success: false,
+          error: { code: 'TOKEN_EXPIRED', message: 'Token is invalid or expired' },
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      const user = users.get(payload.userId);
+      if (!user) {
+        return reply.status(404).send({
+          success: false,
+          error: { code: 'USER_NOT_FOUND', message: 'User not found' },
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      const { displayName, avatar } = request.body;
+      if (displayName !== undefined) user.displayName = displayName;
+      if (avatar !== undefined) user.avatar = avatar;
+      user.updatedAt = new Date();
+
+      return reply.send({
+        success: true,
+        data: {
+          user: {
+            id: user.id,
+            email: user.email,
+            displayName: user.displayName,
+            avatar: user.avatar,
+            role: user.role,
+            onboarded: user.onboarded,
+          },
+        },
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // POST /auth/onboard - Mark user as onboarded (requires auth)
+    // -----------------------------------------------------------------------
+    fastify.post('/auth/onboard', async (
+      request: FastifyRequest<{ Body: { objective?: string } }>,
+      reply: FastifyReply
+    ) => {
+      const authHeader = request.headers.authorization;
+      if (!authHeader?.startsWith('Bearer ')) {
+        return reply.status(401).send({
+          success: false,
+          error: { code: 'UNAUTHORIZED', message: 'Missing or invalid authorization header' },
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      const payload = verifyToken(authHeader.slice(7));
+      if (!payload) {
+        return reply.status(401).send({
+          success: false,
+          error: { code: 'TOKEN_EXPIRED', message: 'Token is invalid or expired' },
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      const userId = payload.userId;
+      const { objective } = request.body;
       const user = users.get(userId);
       if (!user) {
         return reply.status(404).send({

@@ -26,6 +26,7 @@ export interface TradingAgent {
   active: boolean;
   provider?: LLMProvider;
   model?: string;
+  systemPrompt?: string;
 }
 
 export type AgentStrategy = 'informed' | 'momentum' | 'contrarian' | 'random' | 'market_maker';
@@ -39,13 +40,21 @@ interface MarketInfo {
   midPrice?: number;
 }
 
+interface AgentTradeStats {
+  tradeCount: number;
+  lastTradeTime: Date | null;
+  currentPositions: Map<string, number>; // marketId → net quantity
+}
+
 export class AgentTradingLoop {
   private agents: TradingAgent[] = [];
   private markets: MarketInfo[] = [];
   private intervalHandle: ReturnType<typeof setInterval> | null = null;
   private tickCount = 0;
+  private totalTrades = 0;
   private llmEngine: LLMPricingEngine;
   private lastReasonings: Map<string, { market: string; reasoning: string; probability: number; model: string; timestamp: Date }[]> = new Map();
+  private agentTradeStats: Map<string, AgentTradeStats> = new Map();
 
   constructor(
     private matchingEngine: MatchingEngine,
@@ -73,6 +82,7 @@ export class AgentTradingLoop {
       this.llmEngine.registerModel(agent.id, {
         provider: agent.provider,
         model: agent.model || 'gpt-4o-mini',
+        systemPrompt: agent.systemPrompt,
       });
     }
 
@@ -167,8 +177,20 @@ export class AgentTradingLoop {
       if (pricing.suggestedQuantity <= 0) continue;
       if (pricing.suggestedPrice <= 0 || pricing.suggestedPrice >= 1) continue;
 
+      // Scale quantity by agent's riskTolerance
+      let quantity = Math.floor(pricing.suggestedQuantity * agent.riskTolerance);
+      if (quantity <= 0) continue;
+
+      // Enforce maxPositionSize against existing positions
+      const stats = this.agentTradeStats.get(agent.id);
+      const currentPos = stats?.currentPositions.get(market.id) ?? 0;
+      if (currentPos + quantity > agent.maxPositionSize) {
+        quantity = agent.maxPositionSize - currentPos;
+        if (quantity <= 0) continue;
+      }
+
       const balance = this.escrow.getBalance(agent.id);
-      if (!balance || balance.available < pricing.suggestedPrice * pricing.suggestedQuantity) continue;
+      if (!balance || balance.available < pricing.suggestedPrice * quantity) continue;
 
       try {
         await this.matchingEngine.processOrder(agent.id, market.id, {
@@ -177,7 +199,7 @@ export class AgentTradingLoop {
           outcome: pricing.outcome as any,
           order_type: 'limit' as any,
           price: pricing.suggestedPrice,
-          quantity: pricing.suggestedQuantity,
+          quantity,
           metadata: {
             strategy: agent.strategy,
             provider: agent.provider,
@@ -188,6 +210,21 @@ export class AgentTradingLoop {
             tick: this.tickCount,
           },
         });
+
+        // Track the trade
+        this.totalTrades++;
+        const tradeStats = this.agentTradeStats.get(agent.id) || {
+          tradeCount: 0,
+          lastTradeTime: null,
+          currentPositions: new Map(),
+        };
+        tradeStats.tradeCount++;
+        tradeStats.lastTradeTime = new Date();
+        tradeStats.currentPositions.set(
+          market.id,
+          (tradeStats.currentPositions.get(market.id) ?? 0) + quantity,
+        );
+        this.agentTradeStats.set(agent.id, tradeStats);
 
         // Emit reasoning event for the UI
         this.eventBus.publish('agent.reasoning', {
@@ -201,7 +238,7 @@ export class AgentTradingLoop {
           reasoning: pricing.reasoning,
           side: pricing.side,
           price: pricing.suggestedPrice,
-          quantity: pricing.suggestedQuantity,
+          quantity,
           latencyMs: pricing.latencyMs,
           timestamp: new Date().toISOString(),
         });
@@ -230,13 +267,56 @@ export class AgentTradingLoop {
     return result;
   }
 
+  pauseAgent(agentId: string): boolean {
+    const agent = this.agents.find(a => a.id === agentId);
+    if (!agent) return false;
+    agent.active = false;
+    return true;
+  }
+
+  resumeAgent(agentId: string): boolean {
+    const agent = this.agents.find(a => a.id === agentId);
+    if (!agent) return false;
+    agent.active = true;
+    return true;
+  }
+
+  getAgentStatus(agentId: string): 'active' | 'paused' | 'not_found' {
+    const agent = this.agents.find(a => a.id === agentId);
+    if (!agent) return 'not_found';
+    return agent.active ? 'active' : 'paused';
+  }
+
+  removeAgent(agentId: string): boolean {
+    const idx = this.agents.findIndex(a => a.id === agentId);
+    if (idx === -1) return false;
+    this.agents.splice(idx, 1);
+    return true;
+  }
+
   getStats() {
+    const agentStats: Record<string, {
+      tradeCount: number;
+      lastTradeTime: string | null;
+      currentPositions: Record<string, number>;
+    }> = {};
+
+    for (const [id, stats] of this.agentTradeStats) {
+      agentStats[id] = {
+        tradeCount: stats.tradeCount,
+        lastTradeTime: stats.lastTradeTime?.toISOString() ?? null,
+        currentPositions: Object.fromEntries(stats.currentPositions),
+      };
+    }
+
     return {
+      totalTicks: this.tickCount,
+      totalTrades: this.totalTrades,
+      activeAgents: this.agents.filter(a => a.active).length,
       agents: this.agents.length,
-      active_agents: this.agents.filter(a => a.active).length,
       markets: this.markets.length,
-      ticks: this.tickCount,
       running: this.intervalHandle !== null,
+      agentStats,
       llm: this.llmEngine.getStats(),
     };
   }

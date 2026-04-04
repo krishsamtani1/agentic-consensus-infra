@@ -55,6 +55,10 @@ export interface AgentCard {
   // Status
   status: 'active' | 'paused' | 'liquidating' | 'suspended';
   pause_reason?: string;
+  description?: string;
+
+  // Extended configuration (data sources, methodology, risk)
+  config?: AgentConfig;
   
   // Metadata
   created_at: Date;
@@ -68,6 +72,16 @@ export interface MCPToolAccess {
   rate_limit?: number;  // Calls per minute
 }
 
+export interface AgentConfig {
+  data_sources?: string[];
+  methodology?: string;
+  risk_tolerance?: string;
+  max_position_pct?: number;
+  max_exposure_pct?: number;
+  allowed_topics?: string[];
+  strategy_persona?: string;
+}
+
 export interface CreateAgentRequest {
   name: string;
   avatar_url?: string;
@@ -79,6 +93,8 @@ export interface CreateAgentRequest {
   auto_trade?: boolean;
   max_position_pct?: number;
   max_exposure_pct?: number;
+  description?: string;
+  config?: AgentConfig;
 }
 
 // ============================================================================
@@ -117,6 +133,9 @@ export class AgentManager {
     const id = `agent-${uuidv4().slice(0, 8)}`;
     const now = new Date();
     
+    const positionPct = request.config?.max_position_pct ?? request.max_position_pct ?? 25;
+    const exposurePct = request.config?.max_exposure_pct ?? request.max_exposure_pct ?? 80;
+
     const agent: AgentCard = {
       id,
       name: request.name,
@@ -129,8 +148,8 @@ export class AgentManager {
       mcp_endpoint: request.mcp_endpoint,
       trading_config: {
         auto_trade: request.auto_trade ?? true,
-        max_position_pct: request.max_position_pct ?? 25,
-        max_exposure_pct: request.max_exposure_pct ?? 80,
+        max_position_pct: positionPct,
+        max_exposure_pct: exposurePct,
         allowed_topics: request.allowed_topics || [],
         blocked_topics: request.blocked_topics || [],
       },
@@ -144,6 +163,8 @@ export class AgentManager {
         sharpe_ratio: 0,
       },
       status: 'active',
+      description: request.description,
+      config: request.config,
       created_at: now,
       updated_at: now,
     };

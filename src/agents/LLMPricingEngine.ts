@@ -31,28 +31,48 @@ export interface PricingResult {
   suggestedQuantity: number;  // Position size based on confidence
   model: string;              // Which model produced this
   latencyMs: number;          // How long the call took
+  sources_considered?: string[];  // Information categories that informed the estimate
+  methodology?: string;           // Analytical framework used
 }
 
-const PRICING_PROMPT = `You are an expert prediction market analyst. You must estimate the probability that the following event will occur, based on your knowledge and reasoning.
+const PRICING_PROMPT = `You are a senior prediction market analyst at a quantitative research firm. Your track record depends on calibrated probability estimates.
 
 EVENT: {title}
 DESCRIPTION: {description}
-CURRENT MARKET PRICE: {currentPrice} (market's implied probability of YES)
 CATEGORY: {category}
+CURRENT MARKET PRICE: {currentPrice} (market's implied probability)
 
-Respond with ONLY valid JSON in this exact format:
+Analyze this in three steps:
+
+STEP 1 — BASE RATE: What is the historical base rate for events like this? Consider reference classes.
+
+STEP 2 — EVIDENCE UPDATE: What specific evidence shifts the probability from the base rate? List 2-3 concrete factors with direction (increases/decreases probability) and magnitude.
+
+STEP 3 — CALIBRATION CHECK: Compare your estimate to the current market price. If you disagree with the market by more than 15%, explain specifically why you believe the market is wrong.
+
+Respond with ONLY valid JSON:
 {
   "probability": 0.XX,
   "confidence": 0.XX,
-  "reasoning": "Brief 1-2 sentence reasoning"
+  "reasoning": "Base rate: X%. Key factors: [factor1 +Y%, factor2 -Z%]. Final estimate: W% vs market X%.",
+  "sources_considered": ["factor1", "factor2", "factor3"],
+  "methodology": "bayesian_update|trend_analysis|expert_consensus|contrarian_signal"
 }
 
 Rules:
-- probability: Your genuine estimate of YES probability, from 0.01 to 0.99
-- confidence: How confident you are in your estimate (0.3 = low, 0.7 = moderate, 0.95 = high)
-- reasoning: Your brief rationale
-- Do NOT anchor to the current market price. Form your own independent view.
-- Be specific and concrete in your reasoning.`;
+- probability: Your INDEPENDENT estimate (0.01-0.99). Do NOT anchor to market price.
+- confidence: Your metacognitive certainty (0.2=guessing, 0.5=informed, 0.8=high conviction, 0.95=near-certain)
+- reasoning: Must reference specific facts, not vague statements
+- sources_considered: What information categories informed your view
+- methodology: Which analytical framework you primarily used`;
+
+interface LocalEstimateResult {
+  probability: number;
+  confidence: number;
+  reasoning: string;
+  sources_considered?: string[];
+  methodology?: string;
+}
 
 export class LLMPricingEngine {
   private configs: Map<string, LLMConfig> = new Map();
@@ -81,7 +101,7 @@ export class LLMPricingEngine {
         .replace('{currentPrice}', String(market.midPrice ?? 0.5))
         .replace('{category}', market.category || 'general');
 
-      let response: { probability: number; confidence: number; reasoning: string };
+      let response: LocalEstimateResult;
 
       switch (config.provider) {
         case 'openai':
@@ -111,7 +131,7 @@ export class LLMPricingEngine {
       if (Math.abs(edge) < 0.02) return null;
 
       const side: 'buy' | 'sell' = edge > 0 ? 'buy' : 'sell';
-      const outcome: 'yes' | 'no' = side === 'buy' ? 'yes' : 'yes';
+      const outcome: 'yes' | 'no' = side === 'buy' ? 'yes' : 'no';
       const suggestedPrice = side === 'buy'
         ? Math.min(0.95, currentPrice + Math.abs(edge) * 0.5)
         : Math.max(0.05, currentPrice - Math.abs(edge) * 0.5);
@@ -129,6 +149,8 @@ export class LLMPricingEngine {
         suggestedQuantity,
         model: config.model,
         latencyMs,
+        sources_considered: response.sources_considered,
+        methodology: response.methodology,
       };
     } catch (err: any) {
       console.error(`[LLMPricing] ${config.model} error: ${err.message}`);
@@ -136,7 +158,7 @@ export class LLMPricingEngine {
     }
   }
 
-  private async callOpenAI(config: LLMConfig, prompt: string): Promise<{ probability: number; confidence: number; reasoning: string }> {
+  private async callOpenAI(config: LLMConfig, prompt: string): Promise<LocalEstimateResult> {
     const apiKey = config.apiKey || process.env.OPENAI_API_KEY;
     if (!apiKey) return this.localEstimate({} as any);
 
@@ -153,7 +175,7 @@ export class LLMPricingEngine {
           { role: 'user', content: prompt },
         ],
         temperature: config.temperature ?? 0.3,
-        max_tokens: 200,
+        max_tokens: 400,
         response_format: { type: 'json_object' },
       }),
     });
@@ -168,7 +190,7 @@ export class LLMPricingEngine {
     return this.parseResponse(content);
   }
 
-  private async callAnthropic(config: LLMConfig, prompt: string): Promise<{ probability: number; confidence: number; reasoning: string }> {
+  private async callAnthropic(config: LLMConfig, prompt: string): Promise<LocalEstimateResult> {
     const apiKey = config.apiKey || process.env.ANTHROPIC_API_KEY;
     if (!apiKey) return this.localEstimate({} as any);
 
@@ -181,7 +203,7 @@ export class LLMPricingEngine {
       },
       body: JSON.stringify({
         model: config.model || 'claude-3-5-haiku-20241022',
-        max_tokens: 200,
+        max_tokens: 400,
         system: config.systemPrompt || 'You are a prediction market analyst. Respond only with valid JSON.',
         messages: [
           { role: 'user', content: prompt },
@@ -200,7 +222,7 @@ export class LLMPricingEngine {
     return this.parseResponse(content);
   }
 
-  private async callGoogle(config: LLMConfig, prompt: string): Promise<{ probability: number; confidence: number; reasoning: string }> {
+  private async callGoogle(config: LLMConfig, prompt: string): Promise<LocalEstimateResult> {
     const apiKey = config.apiKey || process.env.GOOGLE_AI_API_KEY;
     if (!apiKey) return this.localEstimate({} as any);
 
@@ -214,7 +236,7 @@ export class LLMPricingEngine {
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
             temperature: config.temperature ?? 0.3,
-            maxOutputTokens: 200,
+            maxOutputTokens: 400,
             responseMimeType: 'application/json',
           },
         }),
@@ -231,45 +253,106 @@ export class LLMPricingEngine {
     return this.parseResponse(content);
   }
 
-  /**
-   * Local fallback: domain-aware heuristic, NOT pure random.
-   * Uses category-specific biases and anchoring to create differentiated agents.
-   */
-  private localEstimate(market: { title?: string; category?: string; midPrice?: number }): { probability: number; confidence: number; reasoning: string } {
+  private localEstimate(
+    market: { title?: string; category?: string; midPrice?: number },
+    strategy?: string,
+  ): LocalEstimateResult {
     const mid = market.midPrice ?? 0.5;
     const category = (market.category || '').toLowerCase();
+    const effectiveStrategy = strategy || 'informed';
 
-    let bias = 0;
-    let confidence = 0.4;
-    let reasoning = 'Heuristic estimate based on category patterns';
+    switch (effectiveStrategy) {
+      case 'momentum': {
+        const direction = mid > 0.5 ? 1 : -1;
+        const magnitude = Math.abs(mid - 0.5);
+        const bias = direction * (0.03 + magnitude * 0.4 + Math.random() * 0.05);
+        const probability = Math.max(0.05, Math.min(0.95, mid + bias));
+        return {
+          probability,
+          confidence: 0.45 + magnitude * 0.3,
+          reasoning: `Momentum signal: price at ${mid.toFixed(2)} suggests continued ${direction > 0 ? 'upward' : 'downward'} trend`,
+          sources_considered: ['price_trend', 'market_momentum', 'volume_direction'],
+          methodology: 'trend_analysis',
+        };
+      }
 
-    if (category.includes('tech') || category.includes('ai')) {
-      bias = 0.05 + Math.random() * 0.1;
-      confidence = 0.5;
-      reasoning = 'Tech predictions tend toward optimistic outcomes given current investment trends';
-    } else if (category.includes('crypto')) {
-      bias = -0.05 + Math.random() * 0.15;
-      confidence = 0.35;
-      reasoning = 'Crypto markets are highly volatile with unpredictable short-term outcomes';
-    } else if (category.includes('geopolitics') || category.includes('climate')) {
-      bias = -0.03 + Math.random() * 0.06;
-      confidence = 0.45;
-      reasoning = 'Geopolitical events have structural uncertainties that markets tend to underweight';
-    } else if (category.includes('economics') || category.includes('finance')) {
-      bias = Math.random() * 0.08 - 0.04;
-      confidence = 0.55;
-      reasoning = 'Economic indicators show mixed signals requiring careful probabilistic weighting';
-    } else {
-      bias = Math.random() * 0.1 - 0.05;
-      confidence = 0.4;
-      reasoning = 'General assessment based on base rates and available information';
+      case 'contrarian': {
+        const direction = mid > 0.6 ? -1 : mid < 0.4 ? 1 : (Math.random() > 0.5 ? 1 : -1);
+        const deviation = Math.abs(mid - 0.5);
+        const bias = direction * (0.05 + deviation * 0.5 + Math.random() * 0.05);
+        const probability = Math.max(0.05, Math.min(0.95, mid + bias));
+        return {
+          probability,
+          confidence: 0.35 + deviation * 0.25,
+          reasoning: `Contrarian view: market at ${mid.toFixed(2)} appears ${mid > 0.6 ? 'over' : mid < 0.4 ? 'under' : 'fairly'}-priced relative to base rates`,
+          sources_considered: ['mean_reversion', 'crowd_psychology', 'base_rate_analysis'],
+          methodology: 'contrarian_signal',
+        };
+      }
+
+      case 'market_maker': {
+        const tightSpread = 0.01 + Math.random() * 0.02;
+        const probability = Math.max(0.05, Math.min(0.95, mid + (Math.random() - 0.5) * tightSpread));
+        return {
+          probability,
+          confidence: 0.7 + Math.random() * 0.15,
+          reasoning: `Market-making around mid ${mid.toFixed(2)} with tight spread of ${(tightSpread * 100).toFixed(1)}%`,
+          sources_considered: ['order_book_depth', 'bid_ask_spread', 'market_microstructure'],
+          methodology: 'expert_consensus',
+        };
+      }
+
+      case 'random': {
+        const probability = 0.05 + Math.random() * 0.9;
+        return {
+          probability,
+          confidence: 0.2 + Math.random() * 0.15,
+          reasoning: 'Random exploration estimate for market discovery',
+          sources_considered: ['stochastic_sampling'],
+          methodology: 'bayesian_update',
+        };
+      }
+
+      case 'informed':
+      default: {
+        let bias = 0;
+        let confidence = 0.4;
+        let reasoning = 'Heuristic estimate based on category patterns';
+        let sources: string[] = ['category_base_rates', 'historical_patterns'];
+
+        if (category.includes('tech') || category.includes('ai')) {
+          bias = 0.05 + Math.random() * 0.1;
+          confidence = 0.5;
+          reasoning = 'Tech predictions tend toward optimistic outcomes given current investment trends';
+          sources = ['tech_investment_trends', 'adoption_curves', 'industry_reports'];
+        } else if (category.includes('crypto')) {
+          bias = -0.05 + Math.random() * 0.15;
+          confidence = 0.35;
+          reasoning = 'Crypto markets are highly volatile with unpredictable short-term outcomes';
+          sources = ['crypto_volatility_index', 'on_chain_metrics', 'regulatory_signals'];
+        } else if (category.includes('geopolitics') || category.includes('climate')) {
+          bias = -0.03 + Math.random() * 0.06;
+          confidence = 0.45;
+          reasoning = 'Geopolitical events have structural uncertainties that markets tend to underweight';
+          sources = ['geopolitical_risk_index', 'historical_precedent', 'expert_forecasts'];
+        } else if (category.includes('economics') || category.includes('finance')) {
+          bias = Math.random() * 0.08 - 0.04;
+          confidence = 0.55;
+          reasoning = 'Economic indicators show mixed signals requiring careful probabilistic weighting';
+          sources = ['leading_indicators', 'yield_curve', 'labor_market_data'];
+        } else {
+          bias = Math.random() * 0.1 - 0.05;
+          confidence = 0.4;
+          reasoning = 'General assessment based on base rates and available information';
+        }
+
+        const probability = Math.max(0.05, Math.min(0.95, mid + bias));
+        return { probability, confidence, reasoning, sources_considered: sources, methodology: 'bayesian_update' };
+      }
     }
-
-    const probability = Math.max(0.05, Math.min(0.95, mid + bias));
-    return { probability, confidence, reasoning };
   }
 
-  private parseResponse(content: string): { probability: number; confidence: number; reasoning: string } {
+  private parseResponse(content: string): LocalEstimateResult {
     try {
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (!jsonMatch) throw new Error('No JSON found');
@@ -279,6 +362,8 @@ export class LLMPricingEngine {
         probability: typeof parsed.probability === 'number' ? parsed.probability : 0.5,
         confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.5,
         reasoning: typeof parsed.reasoning === 'string' ? parsed.reasoning : 'No reasoning provided',
+        sources_considered: Array.isArray(parsed.sources_considered) ? parsed.sources_considered : undefined,
+        methodology: typeof parsed.methodology === 'string' ? parsed.methodology : undefined,
       };
     } catch {
       return { probability: 0.5, confidence: 0.3, reasoning: 'Failed to parse model response' };

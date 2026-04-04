@@ -216,20 +216,35 @@ export function createMarketRoutes(engine: MatchingEngine, oracle: OracleEngine,
       reply: FastifyReply
     ) => {
       const { id } = request.params;
-      const market = markets.get(id);
+      let market = markets.get(id);
+
+      // Also check platform-seeded markets
+      if (!market) {
+        const sm = seededMarkets.get(id);
+        if (sm) {
+          market = {
+            id: sm.id, ticker: sm.ticker, title: sm.title, description: sm.description,
+            status: sm.status === 'open' ? MarketStatus.ACTIVE : MarketStatus.SETTLED,
+            outcome: null, category: sm.category, tags: sm.tags,
+            volume_yes: sm.volume_yes, volume_no: sm.volume_no,
+            last_price_yes: sm.last_price_yes, last_price_no: sm.last_price_no,
+            open_interest: 0, created_at: new Date(sm.created_at),
+            opens_at: new Date(sm.created_at), closes_at: new Date(sm.closes_at),
+            resolves_at: new Date(sm.resolves_at), resolution_source: sm.resolution_source,
+            resolution_schema: { type: 'oracle' }, min_order_size: 1,
+            max_position: 10000, fee_rate: 0.002, metadata: {}, source: 'seeded',
+          } as unknown as Market;
+        }
+      }
 
       if (!market) {
         return reply.status(404).send({
           success: false,
-          error: {
-            code: 'MARKET_NOT_FOUND',
-            message: `Market ${id} not found`,
-          },
+          error: { code: 'MARKET_NOT_FOUND', message: `Market ${id} not found` },
           timestamp: new Date().toISOString(),
         });
       }
 
-      // Get current prices
       const yesBook = engine.getBestPrices(id, OutcomeToken.YES);
       const noBook = engine.getBestPrices(id, OutcomeToken.NO);
 

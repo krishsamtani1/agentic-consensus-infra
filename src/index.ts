@@ -402,6 +402,24 @@ async function start() {
       timestamp: new Date().toISOString(),
     }));
 
+    fastify.get('/v1/settlements/agent/:agentId', async (request: any) => {
+      const pnl = seedResult.settlement.getAgentPnL(request.params.agentId);
+      return {
+        success: true,
+        data: {
+          agent_id: request.params.agentId,
+          settlements: pnl.settlements,
+          summary: {
+            markets_participated: pnl.markets_participated,
+            wins: pnl.markets_won,
+            losses: pnl.markets_lost,
+            total_pnl: pnl.total_pnl,
+          },
+        },
+        timestamp: new Date().toISOString(),
+      };
+    });
+
     await fastify.listen({
       port: config.port,
       host: config.host,

@@ -4,7 +4,7 @@
  * Positioned for the AI Agent Rating Agency model
  */
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -82,8 +82,22 @@ export default function Onboarding() {
   const [selectedObjective, setSelectedObjective] = useState('certify');
   const [selectedAgents, setSelectedAgents] = useState<string[]>(['analyst']);
   const [fundingChoice, setFundingChoice] = useState<'demo' | 'stripe'>('demo');
+  const [touched, setTouched] = useState<{ email?: boolean; password?: boolean }>({});
 
   const { register, login, skipAuth, user, markOnboarded } = useAuth();
+
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  const pwChecks = {
+    length: password.length >= 8,
+    upper: /[A-Z]/.test(password),
+    lower: /[a-z]/.test(password),
+    number: /\d/.test(password),
+  };
+  const passwordValid = pwChecks.length && pwChecks.upper && pwChecks.lower && pwChecks.number;
+  const formValid = useMemo(
+    () => emailValid && (authMode === 'login' || passwordValid),
+    [emailValid, authMode, passwordValid],
+  );
   const navigate = useNavigate();
 
   const handleAuth = async () => {
@@ -230,18 +244,43 @@ export default function Onboarding() {
                     className="w-full bg-black border border-[#262626] rounded-xl py-3 px-4 text-white placeholder-gray-600 focus:outline-none focus:border-cyan-500" />
                 )}
 
-                <input type="email" placeholder="Email address" value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  className="w-full bg-black border border-[#262626] rounded-xl py-3 px-4 text-white placeholder-gray-600 focus:outline-none focus:border-cyan-500" />
+                <div>
+                  <input type="email" placeholder="Email address" value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    onBlur={() => setTouched(t => ({ ...t, email: true }))}
+                    className={clsx('w-full bg-black border rounded-xl py-3 px-4 text-white placeholder-gray-600 focus:outline-none',
+                      touched.email && !emailValid ? 'border-red-500/60 focus:border-red-500' : 'border-[#262626] focus:border-cyan-500')} />
+                  {touched.email && !emailValid && (
+                    <p className="text-red-400 text-xs mt-1 ml-1">Enter a valid email address</p>
+                  )}
+                </div>
 
-                <input type="password" placeholder="Password" value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleAuth()}
-                  className="w-full bg-black border border-[#262626] rounded-xl py-3 px-4 text-white placeholder-gray-600 focus:outline-none focus:border-cyan-500" />
+                <div>
+                  <input type="password" placeholder="Password" value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    onBlur={() => setTouched(t => ({ ...t, password: true }))}
+                    onKeyDown={e => e.key === 'Enter' && formValid && handleAuth()}
+                    className={clsx('w-full bg-black border rounded-xl py-3 px-4 text-white placeholder-gray-600 focus:outline-none',
+                      touched.password && !passwordValid && authMode === 'register' ? 'border-red-500/60 focus:border-red-500' : 'border-[#262626] focus:border-cyan-500')} />
+                  {authMode === 'register' && touched.password && !passwordValid && (
+                    <div className="mt-1.5 ml-1 space-y-0.5">
+                      {[
+                        { ok: pwChecks.length, msg: 'At least 8 characters' },
+                        { ok: pwChecks.upper, msg: 'One uppercase letter' },
+                        { ok: pwChecks.lower, msg: 'One lowercase letter' },
+                        { ok: pwChecks.number, msg: 'One number' },
+                      ].map(r => (
+                        <p key={r.msg} className={clsx('text-xs', r.ok ? 'text-emerald-400' : 'text-red-400/80')}>
+                          {r.ok ? '✓' : '✗'} {r.msg}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
 
                 {error && <p className="text-red-400 text-sm">{error}</p>}
 
-                <button onClick={handleAuth} disabled={isLoading || !email || !password}
+                <button onClick={handleAuth} disabled={isLoading || !formValid}
                   className="w-full py-3 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-semibold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
                   {isLoading ? (
                     <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />

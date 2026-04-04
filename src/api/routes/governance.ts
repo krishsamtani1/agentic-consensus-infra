@@ -11,8 +11,10 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { EventBus } from '../../events/EventBus.js';
 import { getDoctrineEngine, DoctrineConfig } from '../../core/DoctrineEngine.js';
-import { getAgentManager, CreateAgentRequest } from '../../core/AgentManager.js';
+import { getAgentManager, CreateAgentRequest, AgentConfig } from '../../core/AgentManager.js';
 import { getRatingEngine } from '../../rating/RatingEngine.js';
+import { getActiveTradingLoop } from '../../boot/PlatformSeeder.js';
+import { authMiddleware } from './auth.js';
 
 export function createGovernanceRoutes(eventBus: EventBus) {
   const doctrineEngine = getDoctrineEngine(eventBus);
@@ -34,21 +36,25 @@ export function createGovernanceRoutes(eventBus: EventBus) {
 
       // Merge in seeded/platform agents from the rating engine
       const ratingEngine = getRatingEngine(eventBus);
+      const tradingLoop = getActiveTradingLoop();
       const allRatings = ratingEngine.getFullLeaderboard(100);
       const platformAgents = allRatings
         .filter(r => !managedIds.has(r.agent_id))
-        .map(r => ({
-          id: r.agent_id,
-          name: r.agent_id,
-          status: 'active',
-          truth_score: r.truth_score,
-          grade: r.grade,
-          brier_score: r.brier_score,
-          total_trades: r.total_trades,
-          total_pnl: r.total_pnl,
-          created_at: new Date(),
-          updated_at: new Date(),
-        }));
+        .map(r => {
+          const loopStatus = tradingLoop?.getAgentStatus(r.agent_id);
+          return {
+            id: r.agent_id,
+            name: r.agent_id,
+            status: loopStatus === 'paused' ? 'paused' : 'active',
+            truth_score: r.truth_score,
+            grade: r.grade,
+            brier_score: r.brier_score,
+            total_trades: r.total_trades,
+            total_pnl: r.total_pnl,
+            created_at: new Date(),
+            updated_at: new Date(),
+          };
+        });
 
       const agents = [...managedAgents, ...platformAgents];
       
@@ -86,12 +92,14 @@ export function createGovernanceRoutes(eventBus: EventBus) {
       const ratingEngine = getRatingEngine(eventBus);
       const rating = ratingEngine.getRating(request.params.id);
       if (rating) {
+        const tradingLoop = getActiveTradingLoop();
+        const loopStatus = tradingLoop?.getAgentStatus(request.params.id);
         return reply.send({
           success: true,
           data: {
             id: rating.agent_id,
             name: request.params.id,
-            status: 'active',
+            status: loopStatus === 'paused' ? 'paused' : 'active',
             truth_score: rating.truth_score,
             grade: rating.grade,
             brier_score: rating.brier_score,
@@ -170,9 +178,12 @@ export function createGovernanceRoutes(eventBus: EventBus) {
       request: FastifyRequest<{ Params: { id: string } }>,
       reply: FastifyReply
     ) => {
-      const success = agentManager.deleteAgent(request.params.id);
-      
-      if (!success) {
+      const managedSuccess = agentManager.deleteAgent(request.params.id);
+
+      const tradingLoop = getActiveTradingLoop();
+      const loopSuccess = tradingLoop?.removeAgent(request.params.id) ?? false;
+
+      if (!managedSuccess && !loopSuccess) {
         return reply.status(404).send({
           success: false,
           error: { code: 'DELETE_FAILED', message: 'Agent not found or cannot be deleted' },
@@ -187,6 +198,67 @@ export function createGovernanceRoutes(eventBus: EventBus) {
     });
     
     // =========================================================================
+    // AGENT CONFIG
+    // =========================================================================
+
+    /**
+     * PUT /v1/agents/:id/config
+     * Update agent configuration (requires auth)
+     */
+    fastify.put<{ Params: { id: string }; Body: AgentConfig }>('/agents/:id/config', {
+      preHandler: authMiddleware(),
+    }, async (request, reply) => {
+      const { id } = request.params;
+      const config = request.body;
+
+      const agent = agentManager.getAgent(id);
+      if (!agent) {
+        return reply.status(404).send({
+          success: false,
+          error: { code: 'AGENT_NOT_FOUND', message: 'Agent not found' },
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      // Apply config fields
+      if (config.data_sources !== undefined) agent.config = { ...agent.config, data_sources: config.data_sources };
+      if (config.methodology !== undefined) agent.config = { ...agent.config, methodology: config.methodology };
+      if (config.risk_tolerance !== undefined) agent.config = { ...agent.config, risk_tolerance: config.risk_tolerance };
+      if (config.max_position_pct !== undefined) {
+        agent.trading_config.max_position_pct = config.max_position_pct;
+        agent.config = { ...agent.config, max_position_pct: config.max_position_pct };
+      }
+      if (config.max_exposure_pct !== undefined) {
+        agent.trading_config.max_exposure_pct = config.max_exposure_pct;
+        agent.config = { ...agent.config, max_exposure_pct: config.max_exposure_pct };
+      }
+      if (config.allowed_topics !== undefined) {
+        agent.trading_config.allowed_topics = config.allowed_topics;
+        agent.config = { ...agent.config, allowed_topics: config.allowed_topics };
+      }
+      if (config.strategy_persona !== undefined) {
+        agent.strategy_persona = config.strategy_persona;
+        agent.config = { ...agent.config, strategy_persona: config.strategy_persona };
+      }
+
+      agent.updated_at = new Date();
+
+      // Sync with doctrine engine
+      const doctrineEngine = getDoctrineEngine(eventBus);
+      doctrineEngine.setAgentDoctrine(id, {
+        max_position_size_pct: agent.trading_config.max_position_pct,
+        max_total_exposure_pct: agent.trading_config.max_exposure_pct,
+        allowed_topics: agent.trading_config.allowed_topics,
+      });
+
+      return reply.send({
+        success: true,
+        data: { id: agent.id, name: agent.name, config: agent.config, trading_config: agent.trading_config },
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    // =========================================================================
     // AGENT CONTROL
     // =========================================================================
     
@@ -198,9 +270,12 @@ export function createGovernanceRoutes(eventBus: EventBus) {
       request: FastifyRequest<{ Params: { id: string }; Body: { reason?: string } }>,
       reply: FastifyReply
     ) => {
-      const success = agentManager.pauseAgent(request.params.id, request.body.reason);
-      
-      if (!success) {
+      const managedSuccess = agentManager.pauseAgent(request.params.id, request.body.reason);
+
+      const tradingLoop = getActiveTradingLoop();
+      const loopSuccess = tradingLoop?.pauseAgent(request.params.id) ?? false;
+
+      if (!managedSuccess && !loopSuccess) {
         return reply.status(404).send({
           success: false,
           error: { code: 'AGENT_NOT_FOUND', message: 'Agent not found' },
@@ -222,9 +297,12 @@ export function createGovernanceRoutes(eventBus: EventBus) {
       request: FastifyRequest<{ Params: { id: string } }>,
       reply: FastifyReply
     ) => {
-      const success = agentManager.resumeAgent(request.params.id);
-      
-      if (!success) {
+      const managedSuccess = agentManager.resumeAgent(request.params.id);
+
+      const tradingLoop = getActiveTradingLoop();
+      const loopSuccess = tradingLoop?.resumeAgent(request.params.id) ?? false;
+
+      if (!managedSuccess && !loopSuccess) {
         return reply.status(404).send({
           success: false,
           error: { code: 'AGENT_NOT_FOUND', message: 'Agent not found' },

@@ -78,6 +78,14 @@ export interface Certification {
   revoked: boolean;
 }
 
+export interface AgentPrediction {
+  agentId: string;
+  marketId: string;
+  predictedProbability: number;
+  side: 'buy' | 'sell';
+  timestamp: Date;
+}
+
 // Minimum trades required before an agent can be rated
 const MIN_TRADES_FOR_RATING = 20;
 // Minimum trades for certification
@@ -120,7 +128,8 @@ export class RatingEngine {
   private ratings: Map<string, AgentRating> = new Map();
   private snapshots: Map<string, RatingSnapshot[]> = new Map();
   private certifications: Map<string, Certification[]> = new Map();
-  private pnlHistory: Map<string, number[]> = new Map(); // For Sharpe/drawdown calc
+  private pnlHistory: Map<string, number[]> = new Map();
+  private predictions: Map<string, AgentPrediction[]> = new Map(); // marketId -> predictions for Brier scoring
 
   constructor(private eventBus: EventBus) {
     // Listen for trade settlements to update ratings
@@ -353,30 +362,39 @@ export class RatingEngine {
     rating.total_trades++;
     rating.last_updated = new Date();
 
-    // Determine if this trade was a win based on price (proxy before settlement)
-    // Buyers at low prices who bought the correct direction tend to win
     const isBuyer = tradeData.buyer_id === agentId;
     const price = tradeData.price || 0.5;
-    
-    // Track PnL proxy: buyers profit when price is low (bought cheap), sellers when high
-    const pnlProxy = isBuyer ? (0.5 - price) * (tradeData.quantity || 1) * 0.1 
+
+    const pnlProxy = isBuyer ? (0.5 - price) * (tradeData.quantity || 1) * 0.1
                               : (price - 0.5) * (tradeData.quantity || 1) * 0.1;
-    
+
     const pnls = this.pnlHistory.get(agentId) || [];
     pnls.push(pnlProxy);
     this.pnlHistory.set(agentId, pnls);
 
-    // Simulate approximate win tracking from trade direction
     if (pnlProxy > 0) {
       rating.winning_trades++;
     }
     rating.win_rate = rating.total_trades > 0 ? rating.winning_trades / rating.total_trades : 0;
 
-    // Recalculate derived metrics
+    // Store prediction for Brier score computation at settlement time
+    const marketId = tradeData.market_id || tradeData.marketId;
+    if (marketId) {
+      const prediction: AgentPrediction = {
+        agentId,
+        marketId,
+        predictedProbability: price,
+        side: isBuyer ? 'buy' : 'sell',
+        timestamp: new Date(),
+      };
+      const marketPredictions = this.predictions.get(marketId) || [];
+      marketPredictions.push(prediction);
+      this.predictions.set(marketId, marketPredictions);
+    }
+
     rating.sharpe_ratio = this.calculateSharpeRatio(agentId);
     rating.max_drawdown = this.calculateMaxDrawdown(agentId);
 
-    // Recalculate rating once we have enough trades (and periodically after)
     if (rating.total_trades >= MIN_TRADES_FOR_RATING && rating.total_trades % 5 === 0) {
       this.recalculateRating(agentId);
     }
@@ -385,6 +403,45 @@ export class RatingEngine {
   private processSettlement(settlementData: any): void {
     if (!settlementData.payouts) return;
 
+    const marketId = settlementData.market_id || settlementData.marketId;
+    const resolvedOutcome: 'yes' | 'no' = settlementData.outcome || settlementData.resolved_outcome;
+    const actualOutcome = resolvedOutcome === 'yes' ? 1 : 0;
+
+    // Compute Brier scores for all agents who made predictions on this market
+    if (marketId) {
+      const marketPredictions = this.predictions.get(marketId) || [];
+      const agentScores = new Map<string, number[]>();
+
+      for (const pred of marketPredictions) {
+        // The agent's implied probability of YES:
+        // buyers believe YES is likely (their predicted prob IS the price they paid)
+        // sellers believe NO is likely (their implied YES prob is 1 - price)
+        const impliedYesProbability = pred.side === 'buy'
+          ? pred.predictedProbability
+          : 1 - pred.predictedProbability;
+
+        const brierScore = Math.pow(impliedYesProbability - actualOutcome, 2);
+
+        const scores = agentScores.get(pred.agentId) || [];
+        scores.push(brierScore);
+        agentScores.set(pred.agentId, scores);
+      }
+
+      for (const [agentId, scores] of agentScores) {
+        const avgBrier = scores.reduce((a, b) => a + b, 0) / scores.length;
+        let rating = this.ratings.get(agentId);
+        if (!rating) {
+          rating = this.initializeRating(agentId);
+        }
+
+        // Running average: blend new Brier score with existing
+        const existingWeight = Math.min(rating.total_trades, 50);
+        rating.brier_score = (rating.brier_score * existingWeight + avgBrier) / (existingWeight + 1);
+      }
+
+      this.predictions.delete(marketId);
+    }
+
     for (const payout of settlementData.payouts) {
       const agentId = payout.agent_id;
       let rating = this.ratings.get(agentId);
@@ -392,24 +449,15 @@ export class RatingEngine {
         rating = this.initializeRating(agentId);
       }
 
-      // Update raw metrics
-      const won = payout.profit_loss > 0;
-      if (won) rating.winning_trades++;
       rating.total_pnl += payout.profit_loss;
-      rating.win_rate = rating.total_trades > 0 
-        ? rating.winning_trades / rating.total_trades 
-        : 0;
 
-      // Record PnL for Sharpe/drawdown
       const pnls = this.pnlHistory.get(agentId) || [];
       pnls.push(payout.profit_loss);
       this.pnlHistory.set(agentId, pnls);
 
-      // Recalculate derived metrics
       rating.sharpe_ratio = this.calculateSharpeRatio(agentId);
       rating.max_drawdown = this.calculateMaxDrawdown(agentId);
 
-      // Recalculate composite rating
       this.recalculateRating(agentId);
     }
   }
@@ -531,6 +579,7 @@ export class RatingEngine {
     this.snapshots.clear();
     this.certifications.clear();
     this.pnlHistory.clear();
+    this.predictions.clear();
   }
 }
 

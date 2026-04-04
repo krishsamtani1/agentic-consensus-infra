@@ -9,8 +9,9 @@
  * - Certification status
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { 
   Plus, 
   Bot, 
@@ -31,7 +32,11 @@ import {
   Globe,
   Anchor,
   Lock,
-  Link2
+  Link2,
+  Pencil,
+  Loader2,
+  Rocket,
+  ArrowRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
@@ -166,10 +171,11 @@ function BrierScoreBadge({ score }: { score: number }) {
 }
 
 // KYA Agent Card
-function AgentCard({ agent, onToggleStatus, onDelete }: { 
+function AgentCard({ agent, onToggleStatus, onDelete, onEdit }: { 
   agent: AgentData; 
   onToggleStatus: (id: string) => void;
   onDelete: (id: string) => void;
+  onEdit: (agent: AgentData) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -230,7 +236,7 @@ function AgentCard({ agent, onToggleStatus, onDelete }: {
           </div>
           
           {/* Status Toggle */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <button
               onClick={() => onToggleStatus(agent.id)}
               className={clsx(
@@ -239,12 +245,21 @@ function AgentCard({ agent, onToggleStatus, onDelete }: {
                   ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30' 
                   : 'bg-amber-500/20 text-amber-400 hover:bg-amber-500/30'
               )}
+              title={agent.status === 'active' ? 'Pause' : 'Resume'}
             >
-              {agent.status === 'active' ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
+              {agent.status === 'active' ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+            </button>
+            <button
+              onClick={() => onEdit(agent)}
+              className="p-1.5 rounded-lg bg-slate-800 text-gray-400 hover:bg-cyan-500/20 hover:text-cyan-400 transition-colors"
+              title="Edit agent"
+            >
+              <Pencil className="w-4 h-4" />
             </button>
             <button
               onClick={() => setExpanded(!expanded)}
               className="p-1.5 rounded-lg bg-slate-800 text-gray-400 hover:bg-slate-700 transition-colors"
+              title="Details"
             >
               <Settings className="w-4 h-4" />
             </button>
@@ -421,6 +436,33 @@ function AgentCard({ agent, onToggleStatus, onDelete }: {
   );
 }
 
+// Agent creation config constants
+const AGENT_DATA_SOURCES = [
+  { id: 'google_news', label: 'Google News', description: 'Real-time news aggregation & analysis' },
+  { id: 'financial_filings', label: 'Financial Filings (SEC, etc.)', description: '10-K, 10-Q, 8-K filings' },
+  { id: 'academic_papers', label: 'Academic Papers', description: 'ArXiv, SSRN, PubMed research' },
+  { id: 'social_sentiment', label: 'Social Sentiment (Twitter/X)', description: 'Real-time social media analysis' },
+  { id: 'blockchain_data', label: 'Blockchain Data', description: 'On-chain analytics & whale tracking' },
+  { id: 'government_reports', label: 'Government Reports', description: 'BLS, Census, Fed data releases' },
+  { id: 'weather_data', label: 'Weather Data', description: 'NOAA, satellite, climate models' },
+  { id: 'satellite_data', label: 'Satellite Data', description: 'Imagery analysis for supply chain' },
+];
+
+const ANALYTICAL_METHODOLOGIES = [
+  { id: 'bayesian', label: 'Bayesian Updating', description: 'Systematic probability revision using prior beliefs and new evidence' },
+  { id: 'momentum', label: 'Trend / Momentum Analysis', description: 'Follow prevailing trends and price momentum signals' },
+  { id: 'contrarian', label: 'Contrarian Analysis', description: 'Bet against consensus when crowd conviction is extreme' },
+  { id: 'ensemble', label: 'Ensemble', description: 'Combine multiple analytical approaches for robust estimates' },
+  { id: 'expert_consensus', label: 'Expert Consensus', description: 'Weight forecasts toward domain expert opinion' },
+];
+
+const RISK_TOLERANCE_LEVELS = [
+  { id: 'low', label: 'Low', description: 'Conservative — prioritize capital preservation', color: 'emerald' },
+  { id: 'medium', label: 'Medium', description: 'Balanced risk/reward tradeoff', color: 'cyan' },
+  { id: 'high', label: 'High', description: 'Aggressive — pursue higher expected returns', color: 'amber' },
+  { id: 'aggressive', label: 'Aggressive', description: 'Maximum risk — concentrated high-conviction bets', color: 'red' },
+];
+
 // Create Agent Modal
 function CreateAgentModal({ isOpen, onClose }: { 
   isOpen: boolean; 
@@ -441,9 +483,60 @@ function CreateAgentModal({ isOpen, onClose }: {
     githubActivity: false,
     socialSentiment: true,
   });
+
+  // New sophisticated fields
+  const [dataSources, setDataSources] = useState<string[]>(['google_news', 'social_sentiment']);
+  const [methodology, setMethodology] = useState('bayesian');
+  const [maxPositionPct, setMaxPositionPct] = useState(15);
+  const [maxExposurePct, setMaxExposurePct] = useState(40);
+  const [riskTolerance, setRiskTolerance] = useState<string>('medium');
+
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  const [createdAgentId, setCreatedAgentId] = useState<string | null>(null);
+  const [deployStatus, setDeployStatus] = useState<'waiting' | 'first-trade' | 'live' | null>(null);
+  const [firstReasoning, setFirstReasoning] = useState<{ market_title: string; probability: number; reasoning: string } | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, []);
+
+  useEffect(() => {
+    if (!createdAgentId || deployStatus === 'live') return;
+    if (pollRef.current) clearInterval(pollRef.current);
+
+    setDeployStatus('waiting');
+    pollRef.current = setInterval(async () => {
+      try {
+        const data = await apiClient.get<{ entries: Array<{ market_title: string; probability: number; reasoning: string }> }>(`/v1/reasoning/${createdAgentId}`);
+        if (data?.entries?.length > 0) {
+          const entry = data.entries[0];
+          setFirstReasoning(entry);
+          setDeployStatus('first-trade');
+          setTimeout(() => setDeployStatus('live'), 3000);
+          if (pollRef.current) clearInterval(pollRef.current);
+        }
+      } catch { /* keep polling */ }
+    }, 3000);
+
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [createdAgentId]);
+
+  const toggleDataSource = (id: string) => {
+    setDataSources(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]);
+  };
+
+  const resetForm = () => {
+    setName(''); setDescription(''); setPersona(''); setMcpEndpoint('');
+    setStakedBudget(100000); setSelectedTopics([]);
+    setDataSources(['google_news', 'social_sentiment']);
+    setMethodology('bayesian'); setMaxPositionPct(15); setMaxExposurePct(40);
+    setRiskTolerance('medium'); setSuccess(null); setCreatedAgentId(null);
+    setDeployStatus(null); setFirstReasoning(null);
+  };
 
   const handleCreate = async () => {
     if (!name) return;
@@ -459,25 +552,24 @@ function CreateAgentModal({ isOpen, onClose }: {
         staked_budget: stakedBudget,
         allowed_topics: selectedTopics,
         mcp_endpoint: mcpEndpoint || undefined,
+        max_position_pct: maxPositionPct,
+        max_exposure_pct: maxExposurePct,
+        config: {
+          data_sources: dataSources,
+          methodology,
+          risk_tolerance: riskTolerance,
+          max_position_pct: maxPositionPct,
+          max_exposure_pct: maxExposurePct,
+        },
       });
 
-      const agentId = result?.id || 'new agent';
-      setSuccess(`Agent "${name}" deployed (${agentId}). It is now auto-trading on live prediction markets and will receive a TruthScore as markets resolve.`);
+      const agentId = result?.id || 'new-agent';
+      setCreatedAgentId(agentId);
+      setSuccess(`Agent "${name}" deployed (${agentId}).`);
       localStorage.setItem('tn_agent_registered', 'true');
 
       queryClient.invalidateQueries({ queryKey: ['agents-list'] });
       queryClient.invalidateQueries({ queryKey: ['agents-ratings'] });
-
-      setTimeout(() => {
-        setName('');
-        setDescription('');
-        setPersona('');
-        setMcpEndpoint('');
-        setStakedBudget(100000);
-        setSelectedTopics([]);
-        setSuccess(null);
-        onClose();
-      }, 4000);
     } catch (e: any) {
       setError(e?.message || 'Failed to deploy agent. Check the console for details.');
     } finally {
@@ -492,76 +584,79 @@ function CreateAgentModal({ isOpen, onClose }: {
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="bg-[#0a0a0a] border border-slate-800 rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+        className="bg-[#0a0a0a] border border-slate-800 rounded-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto"
       >
         <div className="p-6 border-b border-slate-800">
           <h2 className="text-xl font-semibold text-white">Deploy New Counterparty</h2>
-          <p className="text-sm text-gray-500 mt-1">Configure agent identity, permissions, and doctrine</p>
+          <p className="text-sm text-gray-500 mt-1">Configure agent identity, data sources, methodology, and risk parameters</p>
         </div>
 
         <div className="p-6 space-y-6">
-          {/* Basic Info */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">Agent Name</label>
+          {/* ── Identity ── */}
+          <div>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Identity</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Agent Name</label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g., Alpha-Sentinel-001"
+                  className="w-full bg-black border border-slate-700 rounded-lg px-3 py-2 text-white placeholder-gray-600 focus:border-cyan-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Staked Budget ($)</label>
+                <input
+                  type="number"
+                  value={stakedBudget}
+                  onChange={(e) => setStakedBudget(Number(e.target.value))}
+                  className="w-full bg-black border border-slate-700 rounded-lg px-3 py-2 text-white focus:border-cyan-500 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="mt-3">
+              <label className="block text-xs text-gray-500 mb-1">Description</label>
               <input
                 type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g., Alpha-Sentinel-001"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Brief description of the agent's role"
                 className="w-full bg-black border border-slate-700 rounded-lg px-3 py-2 text-white placeholder-gray-600 focus:border-cyan-500 focus:outline-none"
               />
             </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">Staked Budget</label>
+
+            <div className="mt-3">
+              <label className="block text-xs text-gray-500 mb-1">Strategy Persona (System Prompt)</label>
+              <textarea
+                value={persona}
+                onChange={(e) => setPersona(e.target.value)}
+                placeholder="You are a strategic trader specialized in..."
+                rows={3}
+                className="w-full bg-black border border-slate-700 rounded-lg px-3 py-2 text-white placeholder-gray-600 focus:border-cyan-500 focus:outline-none resize-none"
+              />
+            </div>
+
+            <div className="mt-3">
+              <label className="block text-xs text-gray-500 mb-1">
+                <Plug className="w-3 h-3 inline mr-1" />
+                MCP Endpoint (Optional — bring your own agent)
+              </label>
               <input
-                type="number"
-                value={stakedBudget}
-                onChange={(e) => setStakedBudget(Number(e.target.value))}
-                className="w-full bg-black border border-slate-700 rounded-lg px-3 py-2 text-white focus:border-cyan-500 focus:outline-none"
+                type="url"
+                value={mcpEndpoint}
+                onChange={(e) => setMcpEndpoint(e.target.value)}
+                placeholder="https://api.example.com/mcp/your-agent"
+                className="w-full bg-black border border-slate-700 rounded-lg px-3 py-2 text-white placeholder-gray-600 focus:border-purple-500 focus:outline-none font-mono text-sm"
               />
             </div>
           </div>
 
+          {/* ── Market Topics ── */}
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Description</label>
-            <input
-              type="text"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Brief description of the agent's role"
-              className="w-full bg-black border border-slate-700 rounded-lg px-3 py-2 text-white placeholder-gray-600 focus:border-cyan-500 focus:outline-none"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">Strategy Persona (System Prompt)</label>
-            <textarea
-              value={persona}
-              onChange={(e) => setPersona(e.target.value)}
-              placeholder="You are a strategic trader specialized in..."
-              rows={3}
-              className="w-full bg-black border border-slate-700 rounded-lg px-3 py-2 text-white placeholder-gray-600 focus:border-cyan-500 focus:outline-none resize-none"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">
-              <Plug className="w-3 h-3 inline mr-1" />
-              MCP Endpoint (Optional - bring your own agent)
-            </label>
-            <input
-              type="url"
-              value={mcpEndpoint}
-              onChange={(e) => setMcpEndpoint(e.target.value)}
-              placeholder="https://api.example.com/mcp/your-agent"
-              className="w-full bg-black border border-slate-700 rounded-lg px-3 py-2 text-white placeholder-gray-600 focus:border-purple-500 focus:outline-none font-mono text-sm"
-            />
-          </div>
-
-          {/* Topic Selection */}
-          <div>
-            <label className="block text-xs text-gray-500 mb-2">Market Topics</label>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Market Topics</h3>
             <div className="flex flex-wrap gap-2">
               {TOPIC_CLUSTERS.map(topic => (
                 <button
@@ -582,9 +677,162 @@ function CreateAgentModal({ isOpen, onClose }: {
             </div>
           </div>
 
-          {/* Data Source Permissions */}
+          {/* ── Data Sources ── */}
           <div>
-            <label className="block text-xs text-gray-500 mb-2">Data Source Permissions</label>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Data Sources</h3>
+            <p className="text-[11px] text-gray-600 mb-3">Select the data feeds this agent can consume for reasoning</p>
+            <div className="grid grid-cols-2 gap-2">
+              {AGENT_DATA_SOURCES.map(source => {
+                const selected = dataSources.includes(source.id);
+                return (
+                  <label
+                    key={source.id}
+                    className={clsx(
+                      'flex items-start gap-2.5 px-3 py-2.5 rounded-lg cursor-pointer transition-all',
+                      selected
+                        ? 'bg-cyan-500/10 border border-cyan-500/30'
+                        : 'bg-black/30 border border-slate-700 hover:border-slate-600'
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      onChange={() => toggleDataSource(source.id)}
+                      className="sr-only"
+                    />
+                    {selected ? (
+                      <CheckCircle2 className="w-4 h-4 text-cyan-400 mt-0.5 shrink-0" />
+                    ) : (
+                      <div className="w-4 h-4 rounded-full border border-slate-600 mt-0.5 shrink-0" />
+                    )}
+                    <div>
+                      <span className={clsx('text-xs font-medium', selected ? 'text-cyan-400' : 'text-gray-400')}>
+                        {source.label}
+                      </span>
+                      <p className="text-[10px] text-gray-600 mt-0.5">{source.description}</p>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* ── Analytical Methodology ── */}
+          <div>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Analytical Methodology</h3>
+            <p className="text-[11px] text-gray-600 mb-3">How this agent forms probability estimates</p>
+            <div className="space-y-2">
+              {ANALYTICAL_METHODOLOGIES.map(m => (
+                <label
+                  key={m.id}
+                  className={clsx(
+                    'flex items-start gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all',
+                    methodology === m.id
+                      ? 'bg-purple-500/10 border border-purple-500/30'
+                      : 'bg-black/30 border border-slate-700 hover:border-slate-600'
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name="methodology"
+                    value={m.id}
+                    checked={methodology === m.id}
+                    onChange={() => setMethodology(m.id)}
+                    className="sr-only"
+                  />
+                  <div className={clsx(
+                    'w-4 h-4 rounded-full border-2 mt-0.5 shrink-0 flex items-center justify-center',
+                    methodology === m.id ? 'border-purple-400' : 'border-slate-600'
+                  )}>
+                    {methodology === m.id && <div className="w-2 h-2 rounded-full bg-purple-400" />}
+                  </div>
+                  <div>
+                    <span className={clsx('text-xs font-medium', methodology === m.id ? 'text-purple-400' : 'text-gray-400')}>
+                      {m.label}
+                    </span>
+                    <p className="text-[10px] text-gray-600 mt-0.5">{m.description}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* ── Risk Parameters ── */}
+          <div>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Risk Parameters</h3>
+            <div className="space-y-4">
+              {/* Max Position Size */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs text-gray-500">Max Position Size</label>
+                  <span className="text-xs font-mono font-medium text-white">{maxPositionPct}%</span>
+                </div>
+                <input
+                  type="range"
+                  min={5}
+                  max={50}
+                  step={1}
+                  value={maxPositionPct}
+                  onChange={(e) => setMaxPositionPct(Number(e.target.value))}
+                  className="w-full h-1.5 bg-slate-700 rounded-full appearance-none cursor-pointer accent-cyan-500"
+                />
+                <div className="flex justify-between text-[10px] text-gray-600 mt-1">
+                  <span>5%</span>
+                  <span>50%</span>
+                </div>
+              </div>
+
+              {/* Max Single Market Exposure */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs text-gray-500">Max Single Market Exposure</label>
+                  <span className="text-xs font-mono font-medium text-white">{maxExposurePct}%</span>
+                </div>
+                <input
+                  type="range"
+                  min={10}
+                  max={100}
+                  step={5}
+                  value={maxExposurePct}
+                  onChange={(e) => setMaxExposurePct(Number(e.target.value))}
+                  className="w-full h-1.5 bg-slate-700 rounded-full appearance-none cursor-pointer accent-cyan-500"
+                />
+                <div className="flex justify-between text-[10px] text-gray-600 mt-1">
+                  <span>10%</span>
+                  <span>100%</span>
+                </div>
+              </div>
+
+              {/* Risk Tolerance */}
+              <div>
+                <label className="text-xs text-gray-500 mb-2 block">Risk Tolerance</label>
+                <div className="grid grid-cols-4 gap-2">
+                  {RISK_TOLERANCE_LEVELS.map(level => (
+                    <button
+                      key={level.id}
+                      onClick={() => setRiskTolerance(level.id)}
+                      className={clsx(
+                        'px-2 py-2 rounded-lg text-center transition-all border',
+                        riskTolerance === level.id
+                          ? level.color === 'emerald' ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400'
+                          : level.color === 'cyan' ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-400'
+                          : level.color === 'amber' ? 'bg-amber-500/15 border-amber-500/40 text-amber-400'
+                          : 'bg-red-500/15 border-red-500/40 text-red-400'
+                          : 'bg-black/30 border-slate-700 text-gray-500 hover:border-slate-600'
+                      )}
+                    >
+                      <span className="text-xs font-medium block">{level.label}</span>
+                      <span className="text-[9px] block mt-0.5 opacity-70">{level.description}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Legacy Data Source Permissions ── */}
+          <div>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">MCP Tool Permissions</h3>
             <div className="grid grid-cols-2 gap-2">
               {DATA_SOURCES.map(source => (
                 <label
@@ -626,23 +874,254 @@ function CreateAgentModal({ isOpen, onClose }: {
             </div>
           )}
           {success && (
-            <div className="px-3 py-2 bg-emerald-500/10 border border-emerald-500/30 rounded-lg text-xs text-emerald-400">
-              {success}
+            <div className="px-3 py-2 bg-emerald-500/10 border border-emerald-500/30 rounded-lg text-xs text-emerald-400 space-y-2">
+              <p>{success}</p>
+              {deployStatus === 'waiting' && (
+                <div className="flex items-center gap-2 text-amber-400">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Waiting for first trade…</span>
+                </div>
+              )}
+              {deployStatus === 'first-trade' && firstReasoning && (
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 text-cyan-400">
+                    <Rocket className="w-3.5 h-3.5" />
+                    <span className="font-medium">First prediction made!</span>
+                  </div>
+                  <p className="text-gray-400 text-[11px]">
+                    <strong className="text-white">{firstReasoning.market_title}</strong> — {(firstReasoning.probability * 100).toFixed(0)}% probability
+                  </p>
+                  <p className="text-gray-500 text-[10px] line-clamp-2">{firstReasoning.reasoning}</p>
+                </div>
+              )}
+              {deployStatus === 'live' && createdAgentId && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2 text-emerald-400">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span className="font-medium">Agent is live and trading!</span>
+                  </div>
+                  <Link to={`/agent/${createdAgentId}`} onClick={() => { resetForm(); onClose(); }}
+                    className="inline-flex items-center gap-1 text-cyan-400 hover:text-cyan-300 text-[11px]">
+                    View Agent Profile <ArrowRight className="w-3 h-3" />
+                  </Link>
+                </div>
+              )}
             </div>
           )}
           <div className="flex gap-3">
             <button
-              onClick={onClose}
+              onClick={() => { resetForm(); onClose(); }}
               className="flex-1 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors"
             >
-              Cancel
+              {success ? 'Close' : 'Cancel'}
             </button>
-            <button
-              onClick={handleCreate}
-              disabled={!name || isCreating || !!success}
-              className="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-700 text-white font-semibold rounded-lg transition-colors disabled:cursor-not-allowed"
-            >
-              {isCreating ? 'Deploying...' : success ? 'Deployed!' : 'Deploy Agent'}
+            {!success && (
+              <button
+                onClick={handleCreate}
+                disabled={!name || isCreating}
+                className="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-700 text-white font-semibold rounded-lg transition-colors disabled:cursor-not-allowed"
+              >
+                {isCreating ? 'Deploying...' : 'Deploy Agent'}
+              </button>
+            )}
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+// Edit Agent Modal
+function EditAgentModal({ agent, isOpen, onClose }: {
+  agent: AgentData | null;
+  isOpen: boolean;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [persona, setPersona] = useState('');
+  const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
+  const [dataSources, setDataSources] = useState<string[]>([]);
+  const [methodology, setMethodology] = useState('bayesian');
+  const [maxPositionPct, setMaxPositionPct] = useState(15);
+  const [maxExposurePct, setMaxExposurePct] = useState(40);
+  const [riskTolerance, setRiskTolerance] = useState('medium');
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (agent && isOpen) {
+      setPersona(agent.strategyPersona || '');
+      setSelectedTopics(agent.topics || []);
+      setMaxPositionPct(agent.maxPositionPct || 15);
+      setMaxExposurePct(agent.maxExposurePct || 40);
+      setDataSources(['google_news', 'social_sentiment']);
+      setMethodology('bayesian');
+      setRiskTolerance('medium');
+      setError(null);
+      setSaved(false);
+    }
+  }, [agent, isOpen]);
+
+  const handleSave = async () => {
+    if (!agent) return;
+    setIsSaving(true);
+    setError(null);
+    try {
+      await apiClient.put(`/agents/${agent.id}/config`, {
+        strategy_persona: persona,
+        allowed_topics: selectedTopics,
+        max_position_pct: maxPositionPct,
+        max_exposure_pct: maxExposurePct,
+        config: {
+          data_sources: dataSources,
+          methodology,
+          risk_tolerance: riskTolerance,
+        },
+      });
+      queryClient.invalidateQueries({ queryKey: ['agents-list'] });
+      queryClient.invalidateQueries({ queryKey: ['agents-ratings'] });
+      setSaved(true);
+      setTimeout(onClose, 1500);
+    } catch (e: any) {
+      setError(e?.message || 'Failed to update agent config.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (!isOpen || !agent) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-[#0a0a0a] border border-slate-800 rounded-xl w-full max-w-2xl max-h-[85vh] overflow-y-auto"
+      >
+        <div className="p-6 border-b border-slate-800">
+          <h2 className="text-xl font-semibold text-white">Edit Agent — {agent.name}</h2>
+          <p className="text-sm text-gray-500 mt-1">Update configuration for <code className="text-cyan-400 font-mono text-xs">{agent.id}</code></p>
+        </div>
+
+        <div className="p-6 space-y-6">
+          {/* Strategy Persona */}
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Strategy Persona</label>
+            <textarea value={persona} onChange={e => setPersona(e.target.value)} rows={3}
+              className="w-full bg-black border border-slate-700 rounded-lg px-3 py-2 text-white placeholder-gray-600 focus:border-cyan-500 focus:outline-none resize-none" />
+          </div>
+
+          {/* Topics */}
+          <div>
+            <label className="text-xs text-gray-500 mb-2 block">Market Topics</label>
+            <div className="flex flex-wrap gap-2">
+              {TOPIC_CLUSTERS.map(topic => (
+                <button key={topic.id}
+                  onClick={() => setSelectedTopics(prev =>
+                    prev.includes(topic.id) ? prev.filter(t => t !== topic.id) : [...prev, topic.id]
+                  )}
+                  className={clsx('px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
+                    selectedTopics.includes(topic.id)
+                      ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                      : 'bg-slate-800 text-gray-400 border border-transparent hover:border-slate-600'
+                  )}>
+                  {topic.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Data Sources */}
+          <div>
+            <label className="text-xs text-gray-500 mb-2 block">Data Sources</label>
+            <div className="grid grid-cols-2 gap-2">
+              {AGENT_DATA_SOURCES.map(source => {
+                const sel = dataSources.includes(source.id);
+                return (
+                  <label key={source.id} className={clsx('flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-all',
+                    sel ? 'bg-cyan-500/10 border border-cyan-500/30' : 'bg-black/30 border border-slate-700 hover:border-slate-600'
+                  )}>
+                    <input type="checkbox" checked={sel} onChange={() => setDataSources(prev => sel ? prev.filter(s => s !== source.id) : [...prev, source.id])} className="sr-only" />
+                    {sel ? <CheckCircle2 className="w-4 h-4 text-cyan-400 shrink-0" /> : <div className="w-4 h-4 rounded-full border border-slate-600 shrink-0" />}
+                    <span className={clsx('text-xs', sel ? 'text-cyan-400' : 'text-gray-400')}>{source.label}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Methodology */}
+          <div>
+            <label className="text-xs text-gray-500 mb-2 block">Methodology</label>
+            <div className="space-y-1.5">
+              {ANALYTICAL_METHODOLOGIES.map(m => (
+                <label key={m.id} className={clsx('flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all',
+                  methodology === m.id ? 'bg-purple-500/10 border border-purple-500/30' : 'bg-black/30 border border-slate-700 hover:border-slate-600'
+                )}>
+                  <input type="radio" name="edit-methodology" value={m.id} checked={methodology === m.id} onChange={() => setMethodology(m.id)} className="sr-only" />
+                  <div className={clsx('w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center', methodology === m.id ? 'border-purple-400' : 'border-slate-600')}>
+                    {methodology === m.id && <div className="w-1.5 h-1.5 rounded-full bg-purple-400" />}
+                  </div>
+                  <span className={clsx('text-xs', methodology === m.id ? 'text-purple-400' : 'text-gray-400')}>{m.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Risk Parameters */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <div className="flex justify-between mb-1.5">
+                <label className="text-xs text-gray-500">Max Position</label>
+                <span className="text-xs font-mono text-white">{maxPositionPct}%</span>
+              </div>
+              <input type="range" min={5} max={50} value={maxPositionPct} onChange={e => setMaxPositionPct(+e.target.value)}
+                className="w-full h-1.5 bg-slate-700 rounded-full appearance-none cursor-pointer accent-cyan-500" />
+            </div>
+            <div>
+              <div className="flex justify-between mb-1.5">
+                <label className="text-xs text-gray-500">Max Exposure</label>
+                <span className="text-xs font-mono text-white">{maxExposurePct}%</span>
+              </div>
+              <input type="range" min={10} max={100} step={5} value={maxExposurePct} onChange={e => setMaxExposurePct(+e.target.value)}
+                className="w-full h-1.5 bg-slate-700 rounded-full appearance-none cursor-pointer accent-cyan-500" />
+            </div>
+          </div>
+
+          {/* Risk Tolerance */}
+          <div>
+            <label className="text-xs text-gray-500 mb-2 block">Risk Tolerance</label>
+            <div className="grid grid-cols-4 gap-2">
+              {RISK_TOLERANCE_LEVELS.map(level => (
+                <button key={level.id} onClick={() => setRiskTolerance(level.id)}
+                  className={clsx('px-2 py-2 rounded-lg text-center transition-all border',
+                    riskTolerance === level.id
+                      ? level.color === 'emerald' ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400'
+                      : level.color === 'cyan' ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-400'
+                      : level.color === 'amber' ? 'bg-amber-500/15 border-amber-500/40 text-amber-400'
+                      : 'bg-red-500/15 border-red-500/40 text-red-400'
+                      : 'bg-black/30 border-slate-700 text-gray-500 hover:border-slate-600'
+                  )}>
+                  <span className="text-xs font-medium">{level.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="p-6 border-t border-slate-800 space-y-3">
+          {error && (
+            <div className="px-3 py-2 bg-red-500/10 border border-red-500/30 rounded-lg text-xs text-red-400">{error}</div>
+          )}
+          {saved && (
+            <div className="px-3 py-2 bg-emerald-500/10 border border-emerald-500/30 rounded-lg text-xs text-emerald-400">Config saved successfully.</div>
+          )}
+          <div className="flex gap-3">
+            <button onClick={onClose} className="flex-1 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors">Cancel</button>
+            <button onClick={handleSave} disabled={isSaving || saved}
+              className="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-700 text-white font-semibold rounded-lg transition-colors disabled:cursor-not-allowed">
+              {isSaving ? 'Saving…' : saved ? 'Saved!' : 'Save Changes'}
             </button>
           </div>
         </div>
@@ -660,6 +1139,7 @@ export default function Agents() {
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
+  const [editAgent, setEditAgent] = useState<AgentData | null>(null);
 
   // Primary data source: live leaderboard ratings
   const { data: ratingData, isLoading: ratingsLoading } = useQuery({
@@ -745,20 +1225,30 @@ export default function Agents() {
       .sort((a, b) => b.truthScore - a.truthScore);
   }, [ratingData, registeredAgents, hiddenIds]);
 
+  const queryClient = useQueryClient();
+
   const handleToggleStatus = async (id: string) => {
     const agent = agents.find(a => a.id === id);
     if (!agent) return;
     const action = agent.status === 'active' ? 'pause' : 'resume';
     try {
       await apiClient.post(`/agents/${id}/${action}`, {});
+      queryClient.invalidateQueries({ queryKey: ['agents-list'] });
+      queryClient.invalidateQueries({ queryKey: ['agents-ratings'] });
     } catch {
       // Endpoint may not exist yet — toggle is best-effort
     }
   };
 
-  const handleDelete = (id: string) => {
-    if (!confirm('Remove this agent from your view? This action cannot be undone.')) return;
-    // No DELETE endpoint exists — hide locally
+  const handleDelete = async (id: string) => {
+    if (!confirm('Remove this agent? This action cannot be undone.')) return;
+    try {
+      await apiClient.delete(`/agents/${id}`);
+      queryClient.invalidateQueries({ queryKey: ['agents-list'] });
+      queryClient.invalidateQueries({ queryKey: ['agents-ratings'] });
+    } catch {
+      // Fall back to local hide if endpoint fails
+    }
     setHiddenIds(prev => new Set(prev).add(id));
   };
 
@@ -869,6 +1359,7 @@ export default function Agents() {
                 agent={agent}
                 onToggleStatus={handleToggleStatus}
                 onDelete={handleDelete}
+                onEdit={setEditAgent}
               />
             ))}
           </AnimatePresence>
@@ -886,6 +1377,13 @@ export default function Agents() {
       <CreateAgentModal
         isOpen={showCreate}
         onClose={() => setShowCreate(false)}
+      />
+
+      {/* Edit Modal */}
+      <EditAgentModal
+        agent={editAgent}
+        isOpen={!!editAgent}
+        onClose={() => setEditAgent(null)}
       />
     </div>
   );

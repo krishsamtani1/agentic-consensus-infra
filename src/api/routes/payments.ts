@@ -13,8 +13,21 @@
 
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import Stripe from 'stripe';
+import jwt from 'jsonwebtoken';
 import { EscrowLedger } from '../../engine/escrow/EscrowLedger.js';
 import { EventBus } from '../../events/EventBus.js';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'truthnet-dev-secret-change-in-production';
+
+function verifyBearerToken(request: FastifyRequest): { userId: string; role: string } | null {
+  const authHeader = request.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) return null;
+  try {
+    return jwt.verify(authHeader.slice(7), JWT_SECRET) as { userId: string; role: string };
+  } catch {
+    return null;
+  }
+}
 
 // ============================================================================
 // TYPES
@@ -48,23 +61,42 @@ const processedSessions = new Set<string>();
 const withdrawalRequests = new Map<string, WithdrawalRequest>();
 const userDeposits = new Map<string, { amount: number; stripeSessionId: string; timestamp: Date }[]>();
 const subscriptions = new Map<string, Subscription>();
+const demoCreditTotals = new Map<string, number>();
 
-// Plan definitions
+const DEMO_CREDIT_LIMIT = 50_000;
+
+// Plan definitions with optional real Stripe price IDs from env
 const PLANS = {
-  free: { price: 0, agentSlots: 0, apiCallsLimit: 100, label: 'Free', features: ['Public leaderboard', 'Top-10 agent ratings'] },
-  developer: { price: 4900, agentSlots: 1, apiCallsLimit: 1000, label: 'Developer', features: ['Full API access', '1 agent slot', 'Benchmark history', 'Rating webhooks'] },
-  pro: { price: 19900, agentSlots: 10, apiCallsLimit: 10000, label: 'Pro', features: ['Unlimited agents', 'Advanced analytics', 'Certification', 'Priority support'] },
-  enterprise: { price: 0, agentSlots: 100, apiCallsLimit: 100000, label: 'Enterprise', features: ['White-label ratings', 'Custom benchmarks', 'SLA', 'Dedicated support'] },
-} as const;
+  free: { price: 0, stripePriceId: null, agentSlots: 0, apiCallsLimit: 100, label: 'Free', features: ['Public leaderboard', 'Top-10 agent ratings'] },
+  developer: { price: 4900, stripePriceId: process.env.STRIPE_PRICE_DEVELOPER || null, agentSlots: 1, apiCallsLimit: 1000, label: 'Developer', features: ['Full API access', '1 agent slot', 'Benchmark history', 'Rating webhooks'] },
+  pro: { price: 19900, stripePriceId: process.env.STRIPE_PRICE_PRO || null, agentSlots: 10, apiCallsLimit: 10000, label: 'Pro', features: ['Unlimited agents', 'Advanced analytics', 'Certification', 'Priority support'] },
+  enterprise: { price: 0, stripePriceId: null, agentSlots: 100, apiCallsLimit: 100000, label: 'Enterprise', features: ['White-label ratings', 'Custom benchmarks', 'SLA', 'Dedicated support'] },
+};
 
 // ============================================================================
 // ROUTE FACTORY
 // ============================================================================
 
 export function createPaymentRoutes(escrow: EscrowLedger, eventBus: EventBus) {
-  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_placeholder', {
+  const stripeKey = process.env.STRIPE_SECRET_KEY || '';
+  const stripe = new Stripe(stripeKey || 'sk_placeholder_never_used', {
     apiVersion: '2024-12-18.acacia' as any,
   });
+
+  function requireStripe(reply: FastifyReply): boolean {
+    if (!stripeKey) {
+      reply.status(503).send({
+        success: false,
+        error: {
+          code: 'STRIPE_NOT_CONFIGURED',
+          message: 'Stripe is not configured. Set STRIPE_SECRET_KEY in environment variables.',
+        },
+        timestamp: new Date().toISOString(),
+      });
+      return false;
+    }
+    return true;
+  }
 
   const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:4000';
   const DEPOSIT_PRESETS = [10, 50, 100, 500];
@@ -95,6 +127,8 @@ export function createPaymentRoutes(escrow: EscrowLedger, eventBus: EventBus) {
           timestamp: new Date().toISOString(),
         });
       }
+
+      if (!requireStripe(reply)) return;
 
       try {
         const session = await stripe.checkout.sessions.create({
@@ -159,15 +193,20 @@ export function createPaymentRoutes(escrow: EscrowLedger, eventBus: EventBus) {
       const sig = request.headers['stripe-signature'] as string;
       const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
+      if (!webhookSecret) {
+        console.error('[Payments] STRIPE_WEBHOOK_SECRET is not set — rejecting webhook request');
+        return reply.status(503).send({
+          success: false,
+          error: { code: 'WEBHOOK_NOT_CONFIGURED', message: 'Webhook verification not configured' },
+          timestamp: new Date().toISOString(),
+        });
+      }
+
       let event: Stripe.Event;
 
       try {
-        if (webhookSecret && sig) {
-          const rawBody = (request as any).rawBody || JSON.stringify(request.body);
-          event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
-        } else {
-          event = request.body as Stripe.Event;
-        }
+        const rawBody = (request as any).rawBody || JSON.stringify(request.body);
+        event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
       } catch (err: any) {
         console.error('[Payments] Webhook signature verification failed:', err.message);
         return reply.status(400).send({ error: 'Webhook signature verification failed' });
@@ -416,29 +455,47 @@ export function createPaymentRoutes(escrow: EscrowLedger, eventBus: EventBus) {
     });
 
     // -----------------------------------------------------------------------
-    // POST /payments/demo-credit - Demo mode: add free credits
+    // POST /payments/demo-credit - Demo mode: add free credits (auth required, capped)
     // -----------------------------------------------------------------------
     fastify.post('/payments/demo-credit', async (
-      request: FastifyRequest<{ Body: { userId: string; amount?: number } }>,
+      request: FastifyRequest<{ Body: { amount?: number } }>,
       reply: FastifyReply
     ) => {
-      const { userId, amount = 10000 } = request.body;
-
-      if (!userId) {
-        return reply.status(400).send({
+      const payload = verifyBearerToken(request);
+      if (!payload) {
+        return reply.status(401).send({
           success: false,
-          error: { code: 'MISSING_USER', message: 'userId is required' },
+          error: { code: 'UNAUTHORIZED', message: 'Missing or invalid authorization header' },
           timestamp: new Date().toISOString(),
         });
       }
 
+      const userId = payload.userId;
+      const amount = request.body.amount ?? 10000;
+
+      const alreadyCredited = demoCreditTotals.get(userId) || 0;
+      if (alreadyCredited >= DEMO_CREDIT_LIMIT) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: 'DEMO_LIMIT_REACHED',
+            message: `Demo credit limit of ${DEMO_CREDIT_LIMIT} reached. You have already received ${alreadyCredited} demo credits.`,
+          },
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      const effectiveAmount = Math.min(amount, DEMO_CREDIT_LIMIT - alreadyCredited);
+
       try {
-        await escrow.depositFromStripe(userId, amount, `demo-${Date.now()}`);
+        await escrow.depositFromStripe(userId, effectiveAmount, `demo-${Date.now()}`);
+        demoCreditTotals.set(userId, alreadyCredited + effectiveAmount);
 
         return reply.send({
           success: true,
           data: {
-            credited: amount,
+            credited: effectiveAmount,
+            remaining_demo_allowance: DEMO_CREDIT_LIMIT - (alreadyCredited + effectiveAmount),
             balance: escrow.getBalance(userId),
           },
           timestamp: new Date().toISOString(),
@@ -537,12 +594,24 @@ export function createPaymentRoutes(escrow: EscrowLedger, eventBus: EventBus) {
         });
       }
 
-      // Paid plans — create Stripe Checkout for subscription
-      try {
-        const session = await stripe.checkout.sessions.create({
-          payment_method_types: ['card'],
-          mode: 'subscription',
-          line_items: [{
+      if (!requireStripe(reply)) return;
+
+      // If no real Stripe price ID is configured, report demo mode
+      if (!planConfig.stripePriceId && !stripeKey) {
+        return reply.status(503).send({
+          success: false,
+          error: {
+            code: 'DEMO_MODE',
+            message: `Stripe is running in demo mode. Set STRIPE_SECRET_KEY and STRIPE_PRICE_${plan.toUpperCase()} environment variables to enable real subscriptions.`,
+          },
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      // Build line_items: prefer real price ID, fall back to ad-hoc price_data
+      const lineItem: Stripe.Checkout.SessionCreateParams.LineItem = planConfig.stripePriceId
+        ? { price: planConfig.stripePriceId, quantity: 1 }
+        : {
             price_data: {
               currency: 'usd',
               product_data: {
@@ -553,7 +622,13 @@ export function createPaymentRoutes(escrow: EscrowLedger, eventBus: EventBus) {
               recurring: { interval: 'month' },
             },
             quantity: 1,
-          }],
+          };
+
+      try {
+        const session = await stripe.checkout.sessions.create({
+          payment_method_types: ['card'],
+          mode: 'subscription',
+          line_items: [lineItem],
           success_url: `${FRONTEND_URL}/?subscription=success&session_id={CHECKOUT_SESSION_ID}`,
           cancel_url: `${FRONTEND_URL}/?subscription=cancelled`,
           metadata: {

@@ -13,7 +13,7 @@ import {
   Shield, TrendingUp, TrendingDown, Award, Clock, ArrowLeft,
   Copy, CheckCircle, BarChart3, Activity, Target,
   AlertTriangle, Zap, ExternalLink, Bot, ArrowRight,
-  GitCompare, Download, Loader2
+  GitCompare, Download, Loader2, Briefcase, Info
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -30,6 +30,21 @@ interface ReasoningEntry {
   probability: number;
   reasoning: string;
   timestamp: string;
+}
+
+interface SettlementEntry {
+  market_id: string;
+  market_title?: string;
+  outcome: string;
+  payout: number;
+  profit_loss: number;
+  settled_at: string;
+}
+
+interface AgentSettlements {
+  agent_id: string;
+  settlements: SettlementEntry[];
+  summary: { markets_participated: number; wins: number; losses: number; total_pnl: number };
 }
 
 const GRADE_STYLES: Record<string, { text: string; bg: string; border: string; glow: string }> = {
@@ -170,6 +185,14 @@ export default function AgentProfile() {
     queryFn: () => apiClient.get<{ entries: ReasoningEntry[] }>(`/v1/reasoning/${agentId}`),
     enabled: !!agentId,
     staleTime: 30_000,
+    retry: 1,
+  });
+
+  const { data: settlementData } = useQuery({
+    queryKey: ['settlements', agentId],
+    queryFn: () => apiClient.get<AgentSettlements>(`/v1/settlements/agent/${agentId}`),
+    enabled: !!agentId,
+    staleTime: 60_000,
     retry: 1,
   });
 
@@ -317,12 +340,24 @@ export default function AgentProfile() {
             <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
               <Award className="w-4 h-4 text-cyan-400" /> Rating Components
             </h3>
-            <div className="grid grid-cols-2 gap-x-8 gap-y-4">
-              <ScoreBar label="Brier Score (accuracy)" value={brierPercent} color="bg-gradient-to-r from-cyan-500 to-emerald-500" />
-              <ScoreBar label="Sharpe Ratio (returns)" value={sharpePercent} color="bg-gradient-to-r from-blue-500 to-cyan-500" />
-              <ScoreBar label="Win Rate" value={winRatePercent} color="bg-gradient-to-r from-emerald-500 to-teal-500" />
-              <ScoreBar label="Consistency" value={consistencyPercent} color="bg-gradient-to-r from-purple-500 to-blue-500" />
-              <ScoreBar label="Risk Management" value={riskPercent} color="bg-gradient-to-r from-amber-500 to-orange-500" />
+            <div className="grid grid-cols-2 gap-x-8 gap-y-5">
+              {([
+                { label: 'Brier Score (35%)', value: brierPercent, color: 'bg-gradient-to-r from-cyan-500 to-emerald-500', desc: 'Measures prediction calibration. Lower = more accurate forecasts.' },
+                { label: 'Sharpe Ratio (25%)', value: sharpePercent, color: 'bg-gradient-to-r from-blue-500 to-cyan-500', desc: 'Risk-adjusted returns. Higher = better returns per unit of risk.' },
+                { label: 'Win Rate (20%)', value: winRatePercent, color: 'bg-gradient-to-r from-emerald-500 to-teal-500', desc: 'Percentage of trades that were profitable.' },
+                { label: 'Consistency (10%)', value: consistencyPercent, color: 'bg-gradient-to-r from-purple-500 to-blue-500', desc: 'Score stability over time. Less volatile = more reliable.' },
+                { label: 'Risk Management (10%)', value: riskPercent, color: 'bg-gradient-to-r from-amber-500 to-orange-500', desc: 'Drawdown control. Smaller max losses = better risk management.' },
+              ] as const).map(c => (
+                <div key={c.label}>
+                  <ScoreBar label={c.label} value={c.value} color={c.color} />
+                  <div className="flex items-center gap-1.5 mt-1.5">
+                    <span className={clsx('inline-block w-1.5 h-1.5 rounded-full',
+                      c.value >= 70 ? 'bg-emerald-400' : c.value >= 40 ? 'bg-amber-400' : 'bg-red-400'
+                    )} />
+                    <span className="text-[10px] text-gray-500">{c.desc}</span>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -412,6 +447,61 @@ export default function AgentProfile() {
                 <Target className="w-8 h-8 text-gray-700 mb-3" />
                 <p className="text-sm text-gray-500">No predictions yet</p>
                 <p className="text-xs text-gray-700 mt-1">Prediction history will appear here once the agent participates in markets.</p>
+              </div>
+            )}
+          </div>
+
+          {/* Portfolio & Positions */}
+          <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl p-5">
+            <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
+              <Briefcase className="w-4 h-4 text-cyan-400" /> Portfolio &amp; Positions
+            </h3>
+            {settlementData?.settlements && settlementData.settlements.length > 0 ? (
+              <>
+                <div className="grid grid-cols-4 gap-3 mb-4">
+                  <div className="bg-black/50 rounded-lg p-2.5 text-center">
+                    <p className="text-[10px] text-gray-500 mb-0.5">Markets</p>
+                    <p className="text-lg font-bold font-mono text-white">{settlementData.summary.markets_participated}</p>
+                  </div>
+                  <div className="bg-black/50 rounded-lg p-2.5 text-center">
+                    <p className="text-[10px] text-gray-500 mb-0.5">Wins</p>
+                    <p className="text-lg font-bold font-mono text-emerald-400">{settlementData.summary.wins}</p>
+                  </div>
+                  <div className="bg-black/50 rounded-lg p-2.5 text-center">
+                    <p className="text-[10px] text-gray-500 mb-0.5">Losses</p>
+                    <p className="text-lg font-bold font-mono text-red-400">{settlementData.summary.losses}</p>
+                  </div>
+                  <div className="bg-black/50 rounded-lg p-2.5 text-center">
+                    <p className="text-[10px] text-gray-500 mb-0.5">Total P&L</p>
+                    <p className={clsx('text-lg font-bold font-mono', settlementData.summary.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400')}>
+                      {settlementData.summary.total_pnl >= 0 ? '+' : ''}${Math.abs(settlementData.summary.total_pnl).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  {settlementData.settlements.slice(0, 10).map((s, i) => (
+                    <div key={`${s.market_id}-${i}`} className="flex items-center justify-between gap-3 py-2 border-b border-[#111] last:border-0">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-white font-medium truncate">{s.market_title || s.market_id}</p>
+                        <p className="text-[10px] text-gray-600">
+                          {new Date(s.settled_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} — Outcome: <span className="text-gray-400">{s.outcome}</span>
+                        </p>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <p className="text-xs font-mono text-gray-400">Payout ${s.payout.toLocaleString()}</p>
+                        <p className={clsx('text-xs font-mono font-bold', s.profit_loss >= 0 ? 'text-emerald-400' : 'text-red-400')}>
+                          {s.profit_loss >= 0 ? '+' : ''}${Math.abs(s.profit_loss).toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <Briefcase className="w-8 h-8 text-gray-700 mb-3" />
+                <p className="text-sm text-gray-500">No settled positions yet</p>
+                <p className="text-xs text-gray-700 mt-1">Agent is actively trading — results will appear as markets resolve.</p>
               </div>
             )}
           </div>

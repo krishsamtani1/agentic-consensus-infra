@@ -51,6 +51,15 @@ interface SettlementPayout {
   won: boolean;
 }
 
+interface AgentSettlementRecord {
+  market_id: string;
+  outcome: 'yes' | 'no';
+  payout: number;
+  profit_loss: number;
+  settled_at: string;
+  won: boolean;
+}
+
 // ============================================================================
 // SETTLEMENT SERVICE
 // ============================================================================
@@ -58,6 +67,8 @@ interface SettlementPayout {
 export class SettlementService {
   private trades: Map<string, TradeRecord[]> = new Map(); // marketId → trades
   private settledMarkets: Set<string> = new Set();
+  private agentSettlements: Map<string, AgentSettlementRecord[]> = new Map(); // agentId → records
+  private totalPayoutValue = 0;
 
   constructor(
     private escrow: EscrowLedger,
@@ -213,6 +224,22 @@ export class SettlementService {
       }
     }
 
+    // Store per-agent settlement records
+    const settledAt = new Date().toISOString();
+    for (const p of payouts) {
+      const records = this.agentSettlements.get(p.agent_id) || [];
+      records.push({
+        market_id: p.market_id,
+        outcome: p.outcome as 'yes' | 'no',
+        payout: p.payout,
+        profit_loss: p.profit_loss,
+        settled_at: settledAt,
+        won: p.won,
+      });
+      this.agentSettlements.set(p.agent_id, records);
+      this.totalPayoutValue += p.payout;
+    }
+
     // Mark as settled
     this.settledMarkets.add(marketId);
 
@@ -238,12 +265,13 @@ export class SettlementService {
       `${payouts.filter(p => p.won).length} winners, ${payouts.filter(p => !p.won).length} losers`);
 
     // Clean up trade history for this market (save memory)
-    // Keep last 100 settled markets in memory for debugging
     if (this.settledMarkets.size > 100) {
-      const oldest = this.settledMarkets.values().next().value;
-      if (oldest) {
-        this.trades.delete(oldest);
-        this.settledMarkets.delete(oldest);
+      let removed = 0;
+      for (const id of this.settledMarkets) {
+        if (removed >= 20) break;
+        this.trades.delete(id);
+        this.settledMarkets.delete(id);
+        removed++;
       }
     }
 
@@ -284,8 +312,36 @@ export class SettlementService {
     return this.settledMarkets.size;
   }
 
+  getAgentPnL(agentId: string) {
+    const settlements = this.agentSettlements.get(agentId) || [];
+    let totalPnl = 0;
+    let won = 0;
+    let lost = 0;
+    for (const s of settlements) {
+      totalPnl += s.profit_loss;
+      if (s.won) won++;
+      else lost++;
+    }
+    return {
+      total_pnl: totalPnl,
+      markets_participated: settlements.length,
+      markets_won: won,
+      markets_lost: lost,
+      settlements: settlements.map(s => ({
+        market_id: s.market_id,
+        outcome: s.outcome,
+        payout: s.payout,
+        profit_loss: s.profit_loss,
+        settled_at: s.settled_at,
+      })),
+    };
+  }
+
   getStats() {
     return {
+      totalSettlements: this.agentSettlements.size,
+      totalMarketsResolved: this.settledMarkets.size,
+      totalPayoutValue: this.totalPayoutValue,
       active_markets: this.trades.size - this.settledMarkets.size,
       settled_markets: this.settledMarkets.size,
       total_trades_tracked: this.getTradeCount(),
