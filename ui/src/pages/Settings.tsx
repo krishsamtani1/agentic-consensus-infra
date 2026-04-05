@@ -110,52 +110,130 @@ function SubscriptionTab() {
   const currentPlan = user?.plan || 'free';
   const [upgradeError, setUpgradeError] = useState<string | null>(null);
   const [demoCredited, setDemoCredited] = useState(false);
+  const [balance, setBalance] = useState<{ available: number; locked: number; total: number } | null>(null);
+  const [depositAmount, setDepositAmount] = useState('100');
+  const [depositing, setDepositing] = useState(false);
+  const [depositMsg, setDepositMsg] = useState<string | null>(null);
+
+  const token = localStorage.getItem('truthnet_token');
+  const authHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+
+  const fetchBalance = useCallback(async () => {
+    if (!token || token === 'demo-token') return;
+    try {
+      const res = await fetch(`${API_BASE}/v1/payments/balance`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) setBalance(data.data);
+      }
+    } catch {}
+  }, [token]);
+
+  useEffect(() => { fetchBalance(); }, [fetchBalance]);
 
   const handleUpgrade = async (planId: string) => {
     setUpgradeError(null);
     try {
       const res = await fetch(`${API_BASE}/v1/payments/subscribe`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('truthnet_token')}` },
+        method: 'POST', headers: authHeaders,
         body: JSON.stringify({ userId: user?.id, plan: planId }),
       });
       const data = await res.json();
       if (data.data?.url) {
         window.location.href = data.data.url;
       } else if (!data.success) {
-        setUpgradeError(data.error?.message || 'Stripe is not configured. Use demo credits below.');
+        setUpgradeError(data.error?.message || 'Stripe is not configured. Use deposit or demo credits below.');
       }
     } catch {
-      setUpgradeError('Payment processing unavailable. Use demo credits for testing.');
+      setUpgradeError('Payment processing unavailable. Use deposit or demo credits below.');
     }
   };
 
   const handleDemoCredit = async () => {
     try {
-      await fetch(`${API_BASE}/v1/payments/demo-credit`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user?.id || 'demo-user', amount: 10000 }),
+      const res = await fetch(`${API_BASE}/v1/payments/demo-credit`, {
+        method: 'POST', headers: authHeaders,
+        body: JSON.stringify({ amount: 10000 }),
       });
-      setDemoCredited(true);
-      setTimeout(() => setDemoCredited(false), 3000);
+      const data = await res.json();
+      if (data.success) {
+        setDemoCredited(true);
+        fetchBalance();
+        setTimeout(() => setDemoCredited(false), 3000);
+      }
     } catch {}
+  };
+
+  const handleDeposit = async () => {
+    const amt = parseFloat(depositAmount);
+    if (isNaN(amt) || amt < 1 || amt > 10000) { setDepositMsg('Amount must be $1 - $10,000'); return; }
+    setDepositing(true); setDepositMsg(null);
+    try {
+      const res = await fetch(`${API_BASE}/v1/payments/deposit-internal`, {
+        method: 'POST', headers: authHeaders,
+        body: JSON.stringify({ amount: amt }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDepositMsg(`Deposited $${amt.toLocaleString()}. New balance: $${data.data.balance.available.toLocaleString()}`);
+        fetchBalance();
+      } else {
+        setDepositMsg(data.error?.message || 'Deposit failed');
+      }
+    } catch { setDepositMsg('Network error'); }
+    finally { setDepositing(false); }
   };
 
   return (
     <div className="space-y-6">
+      {/* Wallet & Deposit */}
+      <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl p-5">
+        <h3 className="text-lg font-semibold text-white mb-4">Wallet</h3>
+        <div className="grid grid-cols-3 gap-4 mb-4">
+          <div className="bg-black border border-[#262626] rounded-lg p-4 text-center">
+            <p className="text-[10px] text-gray-500 uppercase tracking-wider">Available</p>
+            <p className="text-2xl font-bold text-emerald-400">${(balance?.available ?? 0).toLocaleString()}</p>
+          </div>
+          <div className="bg-black border border-[#262626] rounded-lg p-4 text-center">
+            <p className="text-[10px] text-gray-500 uppercase tracking-wider">Locked</p>
+            <p className="text-2xl font-bold text-amber-400">${(balance?.locked ?? 0).toLocaleString()}</p>
+          </div>
+          <div className="bg-black border border-[#262626] rounded-lg p-4 text-center">
+            <p className="text-[10px] text-gray-500 uppercase tracking-wider">Total</p>
+            <p className="text-2xl font-bold text-white">${(balance?.total ?? 0).toLocaleString()}</p>
+          </div>
+        </div>
+        <div className="flex gap-2 items-center">
+          <div className="flex gap-1">
+            {[50, 100, 500, 1000].map(amt => (
+              <button key={amt} onClick={() => setDepositAmount(String(amt))}
+                className={clsx('px-3 py-1.5 text-xs rounded-lg border transition-colors',
+                  depositAmount === String(amt) ? 'bg-cyan-600/20 border-cyan-500/50 text-cyan-400' : 'bg-black border-[#262626] text-gray-400 hover:border-gray-500')}>
+                ${amt}
+              </button>
+            ))}
+          </div>
+          <input type="number" value={depositAmount} onChange={e => setDepositAmount(e.target.value)}
+            className="w-24 bg-black border border-[#262626] rounded-lg px-3 py-1.5 text-white text-sm focus:border-cyan-500 focus:outline-none" />
+          <button onClick={handleDeposit} disabled={depositing}
+            className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50">
+            {depositing ? 'Processing...' : 'Deposit'}
+          </button>
+          <button onClick={handleDemoCredit}
+            className="px-4 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium rounded-lg transition-colors">
+            {demoCredited ? 'Added!' : '+$10K Demo'}
+          </button>
+        </div>
+        {depositMsg && <p className="mt-2 text-xs text-cyan-400">{depositMsg}</p>}
+      </div>
+
+      {/* Subscription Plans */}
       <h3 className="text-lg font-semibold text-white">Subscription Plans</h3>
 
       {upgradeError && (
         <div className="flex items-start gap-3 bg-amber-500/10 border border-amber-500/20 rounded-lg p-4">
           <AlertCircle className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" />
-          <div>
-            <p className="text-sm text-amber-200">{upgradeError}</p>
-            <button onClick={handleDemoCredit}
-              className="mt-2 px-4 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-medium rounded-lg transition-colors">
-              {demoCredited ? 'Credits Added!' : 'Add $10,000 Demo Credits'}
-            </button>
-          </div>
+          <p className="text-sm text-amber-200">{upgradeError}</p>
         </div>
       )}
 

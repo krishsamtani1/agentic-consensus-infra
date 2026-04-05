@@ -270,7 +270,7 @@ export function createGovernanceRoutes(eventBus: EventBus) {
       request: FastifyRequest<{ Params: { id: string }; Body: { reason?: string } }>,
       reply: FastifyReply
     ) => {
-      const managedSuccess = agentManager.pauseAgent(request.params.id, request.body.reason);
+      const managedSuccess = agentManager.pauseAgent(request.params.id, request.body?.reason);
 
       const tradingLoop = getActiveTradingLoop();
       const loopSuccess = tradingLoop?.pauseAgent(request.params.id) ?? false;

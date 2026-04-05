@@ -12,7 +12,7 @@ import { OracleEngine } from '../../oracle/OracleEngine.js';
 import { getMarketSeeder } from '../../oracle/MarketSeeder.js';
 import { getLiveNewsMarkets } from './liveNews.js';
 import { EventBus } from '../../events/EventBus.js';
-import { seededMarkets } from '../../boot/PlatformSeeder.js';
+import { seededMarkets, getActiveTradingLoop } from '../../boot/PlatformSeeder.js';
 
 // In-memory store (production would use PostgreSQL)
 const markets: Map<string, Market> = new Map();
@@ -96,6 +96,12 @@ export function createMarketRoutes(engine: MatchingEngine, oracle: OracleEngine,
         updated_at: new Date(),
       };
 
+      // Binary markets start at 50/50 odds
+      if (data.resolution_schema.type === 'binary') {
+        market.last_price_yes = 0.50;
+        market.last_price_no = 0.50;
+      }
+
       // Activate if opens_at is in the past
       if (market.opens_at <= new Date()) {
         market.status = MarketStatus.ACTIVE;
@@ -107,6 +113,41 @@ export function createMarketRoutes(engine: MatchingEngine, oracle: OracleEngine,
 
       // Schedule resolution
       oracle.scheduleResolution(market);
+
+      // Register with seededMarkets + active trading loop so agents trade on it
+      seededMarkets.set(market.id, {
+        id: market.id,
+        ticker: market.ticker,
+        title: market.title,
+        description: market.description ?? '',
+        category: market.category ?? 'user',
+        status: 'open',
+        created_at: market.created_at.toISOString(),
+        closes_at: market.closes_at.toISOString(),
+        resolves_at: market.resolves_at.toISOString(),
+        resolution_source: data.resolution_schema.type,
+        volume_yes: 0,
+        volume_no: 0,
+        last_price_yes: market.last_price_yes ?? 0.50,
+        last_price_no: market.last_price_no ?? 0.50,
+        source: 'seeded',
+        tags: market.tags,
+      });
+
+      const tradingLoop = getActiveTradingLoop();
+      if (tradingLoop) {
+        const openMarkets = Array.from(seededMarkets.values())
+          .filter(m => m.status === 'open')
+          .map(m => ({
+            id: m.id,
+            title: m.title,
+            description: m.description,
+            category: m.category,
+            status: m.status,
+            midPrice: m.last_price_yes,
+          }));
+        tradingLoop.updateMarkets(openMarkets);
+      }
 
       return reply.status(201).send({
         success: true,
@@ -170,6 +211,7 @@ export function createMarketRoutes(engine: MatchingEngine, oracle: OracleEngine,
         min_order_size: 1,
         max_position: 10000,
         fee_rate: 0.002,
+        updated_at: new Date(sm.created_at),
         metadata: {},
         source: 'seeded',
       } as unknown as Market));
@@ -218,7 +260,7 @@ export function createMarketRoutes(engine: MatchingEngine, oracle: OracleEngine,
       const { id } = request.params;
       let market = markets.get(id);
 
-      // Also check platform-seeded markets
+      // Check platform-seeded markets
       if (!market) {
         const sm = seededMarkets.get(id);
         if (sm) {
@@ -235,6 +277,12 @@ export function createMarketRoutes(engine: MatchingEngine, oracle: OracleEngine,
             max_position: 10000, fee_rate: 0.002, metadata: {}, source: 'seeded',
           } as unknown as Market;
         }
+      }
+
+      // Check live news markets
+      if (!market) {
+        const liveMarkets = getLiveNewsMarkets();
+        market = liveMarkets.find(m => m.id === id) ?? undefined as unknown as Market;
       }
 
       if (!market) {
@@ -285,7 +333,26 @@ export function createMarketRoutes(engine: MatchingEngine, oracle: OracleEngine,
       const { id } = request.params;
       const { outcome = 'yes', depth = '50' } = request.query;
 
-      const market = markets.get(id);
+      let market: Market | undefined = markets.get(id);
+      if (!market && seededMarkets.has(id)) {
+        const sm = seededMarkets.get(id)!;
+        market = {
+          id: sm.id, ticker: sm.ticker, title: sm.title, description: sm.description,
+          status: sm.status === 'open' ? MarketStatus.ACTIVE : MarketStatus.SETTLED,
+          outcome: null, category: sm.category, tags: sm.tags,
+          volume_yes: sm.volume_yes, volume_no: sm.volume_no,
+          last_price_yes: sm.last_price_yes, last_price_no: sm.last_price_no,
+          open_interest: 0, created_at: new Date(sm.created_at),
+          opens_at: new Date(sm.created_at), closes_at: new Date(sm.closes_at),
+          resolves_at: new Date(sm.resolves_at),
+          resolution_schema: { type: 'oracle' }, min_order_size: 1,
+          max_position: 10000, fee_rate: 0.002, metadata: {}, source: 'seeded',
+        } as unknown as Market;
+      }
+      if (!market) {
+        const liveMarkets = getLiveNewsMarkets();
+        market = liveMarkets.find(m => m.id === id);
+      }
       if (!market) {
         return reply.status(404).send({
           success: false,
@@ -298,6 +365,9 @@ export function createMarketRoutes(engine: MatchingEngine, oracle: OracleEngine,
       }
 
       const token = outcome === 'no' ? OutcomeToken.NO : OutcomeToken.YES;
+
+      engine.initializeMarket(id);
+
       const snapshot = engine.getOrderBookSnapshot(id, token, parseInt(depth));
 
       if (!snapshot) {
@@ -369,30 +439,37 @@ export function createMarketRoutes(engine: MatchingEngine, oracle: OracleEngine,
   };
 }
 
+function safeISO(d: any): string {
+  if (!d) return new Date().toISOString();
+  if (d instanceof Date) return d.toISOString();
+  if (typeof d === 'string') return d;
+  return new Date().toISOString();
+}
+
 function formatMarket(market: Market) {
   return {
     id: market.id,
-    ticker: market.ticker,
+    ticker: market.ticker ?? market.id?.slice(0, 8)?.toUpperCase(),
     title: market.title,
     description: market.description ?? null,
     resolution_schema: market.resolution_schema,
-    opens_at: market.opens_at.toISOString(),
-    closes_at: market.closes_at.toISOString(),
-    resolves_at: market.resolves_at.toISOString(),
+    opens_at: safeISO(market.opens_at),
+    closes_at: safeISO(market.closes_at),
+    resolves_at: safeISO(market.resolves_at),
     status: market.status,
     outcome: market.outcome ?? null,
-    min_order_size: market.min_order_size,
-    max_position: market.max_position,
-    fee_rate: market.fee_rate,
-    volume_yes: market.volume_yes,
-    volume_no: market.volume_no,
-    open_interest: market.open_interest,
+    min_order_size: market.min_order_size ?? 1,
+    max_position: market.max_position ?? 10000,
+    fee_rate: market.fee_rate ?? 0.002,
+    volume_yes: market.volume_yes ?? 0,
+    volume_no: market.volume_no ?? 0,
+    open_interest: market.open_interest ?? 0,
     last_price_yes: market.last_price_yes ?? null,
     last_price_no: market.last_price_no ?? null,
     category: market.category ?? null,
-    tags: market.tags,
-    created_at: market.created_at.toISOString(),
-    updated_at: market.updated_at.toISOString(),
+    tags: market.tags ?? [],
+    created_at: safeISO(market.created_at),
+    updated_at: safeISO((market as any).updated_at ?? market.created_at),
   };
 }
 

@@ -75,16 +75,21 @@ export const HttpJsonResolutionSchemaSchema = z.object({
   timeout_ms: z.number().int().positive().max(60000).optional(),
 });
 
+export const BinaryResolutionSchemaSchema = z.object({
+  type: z.literal('binary'),
+  description: z.string().max(2000).optional(),
+});
+
 export const ResolutionSchemaSchema = z.discriminatedUnion('type', [
   HttpJsonResolutionSchemaSchema,
-  // Add more schema types here as needed
+  BinaryResolutionSchemaSchema,
 ]);
 
 export const CreateMarketRequestSchema = z.object({
   ticker: z.string().min(1).max(50).regex(/^[A-Z0-9-]+$/),
   title: z.string().min(1).max(500),
   description: z.string().max(5000).optional(),
-  resolution_schema: HttpJsonResolutionSchemaSchema,
+  resolution_schema: ResolutionSchemaSchema,
   opens_at: TimestampSchema,
   closes_at: TimestampSchema,
   resolves_at: TimestampSchema,
@@ -101,7 +106,7 @@ export const MarketResponseSchema = z.object({
   ticker: z.string(),
   title: z.string(),
   description: z.string().nullable(),
-  resolution_schema: HttpJsonResolutionSchemaSchema,
+  resolution_schema: ResolutionSchemaSchema,
   opens_at: TimestampSchema,
   closes_at: TimestampSchema,
   resolves_at: TimestampSchema,

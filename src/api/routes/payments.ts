@@ -455,6 +455,107 @@ export function createPaymentRoutes(escrow: EscrowLedger, eventBus: EventBus) {
     });
 
     // -----------------------------------------------------------------------
+    // POST /payments/deposit-internal - Internal credit system (no Stripe needed)
+    // -----------------------------------------------------------------------
+    fastify.post('/payments/deposit-internal', async (
+      request: FastifyRequest<{ Body: { amount: number } }>,
+      reply: FastifyReply
+    ) => {
+      const payload = verifyBearerToken(request);
+      if (!payload) {
+        return reply.status(401).send({
+          success: false,
+          error: { code: 'UNAUTHORIZED', message: 'Missing or invalid authorization header' },
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      const userId = payload.userId;
+      const { amount } = request.body;
+
+      if (!amount || amount < 1 || amount > 10000) {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'INVALID_AMOUNT', message: 'Amount must be between 1 and 10,000' },
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      try {
+        const sessionId = `internal-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        await escrow.depositFromStripe(userId, amount, sessionId);
+
+        if (!userDeposits.has(userId)) {
+          userDeposits.set(userId, []);
+        }
+        userDeposits.get(userId)!.push({
+          amount,
+          stripeSessionId: sessionId,
+          timestamp: new Date(),
+        });
+
+        eventBus.publish('payment.deposit.completed', {
+          userId,
+          amount,
+          sessionId,
+          method: 'internal',
+          timestamp: new Date().toISOString(),
+        });
+
+        const balance = escrow.getBalance(userId);
+
+        return reply.send({
+          success: true,
+          data: {
+            deposited: amount,
+            balance: {
+              available: balance?.available ?? 0,
+              locked: balance?.locked ?? 0,
+              total: balance?.total ?? 0,
+            },
+          },
+          timestamp: new Date().toISOString(),
+        });
+      } catch (error: any) {
+        return reply.status(500).send({
+          success: false,
+          error: { code: 'DEPOSIT_FAILED', message: error.message },
+          timestamp: new Date().toISOString(),
+        });
+      }
+    });
+
+    // -----------------------------------------------------------------------
+    // GET /payments/balance - Get current escrow balance (auth required)
+    // -----------------------------------------------------------------------
+    fastify.get('/payments/balance', async (
+      request: FastifyRequest,
+      reply: FastifyReply
+    ) => {
+      const payload = verifyBearerToken(request);
+      if (!payload) {
+        return reply.status(401).send({
+          success: false,
+          error: { code: 'UNAUTHORIZED', message: 'Missing or invalid authorization header' },
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      const userId = payload.userId;
+      const balance = escrow.getBalance(userId);
+
+      return reply.send({
+        success: true,
+        data: {
+          available: balance?.available ?? 0,
+          locked: balance?.locked ?? 0,
+          total: balance?.total ?? 0,
+        },
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    // -----------------------------------------------------------------------
     // POST /payments/demo-credit - Demo mode: add free credits (auth required, capped)
     // -----------------------------------------------------------------------
     fastify.post('/payments/demo-credit', async (

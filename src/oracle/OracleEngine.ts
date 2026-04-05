@@ -63,6 +63,10 @@ export class OracleEngine {
         return { valid: false, error: 'Missing schema type' };
       }
 
+      if (schema.type === 'binary') {
+        return { valid: true };
+      }
+
       if (schema.type === 'http_json') {
         return this.validateHttpJsonSchema(schema as HttpJsonResolutionSchema, testConnection);
       }
@@ -183,7 +187,7 @@ export class OracleEngine {
       attempts++;
 
       try {
-        const result = await this.executeResolution(market.resolution_schema);
+        const result = await this.executeResolution(market.resolution_schema, market);
 
         if (result.success && result.outcome !== undefined) {
           // Emit success event
@@ -225,12 +229,30 @@ export class OracleEngine {
   /**
    * Execute resolution for a schema
    */
-  private async executeResolution(schema: ResolutionSchema): Promise<OracleResolutionResult> {
+  private async executeResolution(schema: ResolutionSchema, market?: Market): Promise<OracleResolutionResult> {
+    if (schema.type === 'binary') {
+      return this.resolveBinary(market);
+    }
+
     if (schema.type === 'http_json') {
       return this.resolveHttpJson(schema as HttpJsonResolutionSchema);
     }
 
     return { success: false, error: `Unsupported schema type: ${schema.type}` };
+  }
+
+  /**
+   * Resolve a binary market using the current majority position (last traded price).
+   * YES wins if last_price_yes >= 0.50, otherwise NO wins.
+   */
+  private resolveBinary(market?: Market): OracleResolutionResult {
+    const yesPrice = market?.last_price_yes ?? 0.50;
+    const outcome = yesPrice >= 0.50 ? OutcomeToken.YES : OutcomeToken.NO;
+    return {
+      success: true,
+      outcome,
+      evaluated_value: yesPrice,
+    };
   }
 
   /**
