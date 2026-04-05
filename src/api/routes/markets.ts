@@ -228,8 +228,8 @@ export function createMarketRoutes(engine: MatchingEngine, oracle: OracleEngine,
       result.sort((a, b) => b.created_at.getTime() - a.created_at.getTime());
 
       // Paginate
-      const limitNum = Math.min(parseInt(limit), 100);
-      const offsetNum = parseInt(offset);
+      const limitNum = Math.max(1, Math.min(parseInt(limit || '50') || 50, 100));
+      const offsetNum = Math.max(0, parseInt(offset || '0') || 0);
       const paginated = result.slice(offsetNum, offsetNum + limitNum);
 
       const response = {
@@ -413,7 +413,29 @@ export function createMarketRoutes(engine: MatchingEngine, oracle: OracleEngine,
       const { id } = request.params;
       const { limit = '50' } = request.query;
 
-      const market = markets.get(id);
+      let market: Market | undefined = markets.get(id);
+
+      if (!market && seededMarkets.has(id)) {
+        const sm = seededMarkets.get(id)!;
+        market = {
+          id: sm.id, ticker: sm.ticker, title: sm.title, description: sm.description,
+          status: sm.status === 'open' ? MarketStatus.ACTIVE : MarketStatus.SETTLED,
+          outcome: null, category: sm.category, tags: sm.tags,
+          volume_yes: sm.volume_yes, volume_no: sm.volume_no,
+          last_price_yes: sm.last_price_yes, last_price_no: sm.last_price_no,
+          open_interest: 0, created_at: new Date(sm.created_at),
+          opens_at: new Date(sm.created_at), closes_at: new Date(sm.closes_at),
+          resolves_at: new Date(sm.resolves_at),
+          resolution_schema: { type: 'oracle' }, min_order_size: 1,
+          max_position: 10000, fee_rate: 0.002, metadata: {}, source: 'seeded',
+        } as unknown as Market;
+      }
+
+      if (!market) {
+        const liveMarkets = getLiveNewsMarkets();
+        market = liveMarkets.find(m => m.id === id);
+      }
+
       if (!market) {
         return reply.status(404).send({
           success: false,
@@ -425,8 +447,6 @@ export function createMarketRoutes(engine: MatchingEngine, oracle: OracleEngine,
         });
       }
 
-      // TODO: Implement trade history storage
-      // For now, return empty array
       return reply.send({
         success: true,
         data: {

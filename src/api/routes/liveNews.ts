@@ -57,7 +57,7 @@ export function createLiveNewsRoutes(eventBus: EventBus) {
       request: FastifyRequest<{ Querystring: { limit?: string; category?: string } }>,
       reply: FastifyReply
     ) => {
-      const limit = Math.min(parseInt(request.query.limit ?? '15'), 50);
+      const limit = Math.max(1, Math.min(parseInt(request.query.limit || '15') || 15, 50));
       const category = request.query.category as HeadlineCategory | undefined;
 
       const headlines = category 

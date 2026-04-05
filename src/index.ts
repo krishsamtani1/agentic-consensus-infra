@@ -151,6 +151,19 @@ async function registerPlugins() {
   });
 }
 
+// Handle requests that arrive without JSON content type (e.g., DELETE with no body)
+fastify.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_req, body, done) => {
+  done(null, {});
+});
+fastify.addContentTypeParser('text/plain', { parseAs: 'string' }, (_req, body, done) => {
+  try {
+    const str = typeof body === 'string' ? body : body.toString();
+    done(null, str.trim() ? JSON.parse(str) : {});
+  } catch {
+    done(null, {});
+  }
+});
+
 // ============================================================================
 // REGISTER ROUTES
 // ============================================================================

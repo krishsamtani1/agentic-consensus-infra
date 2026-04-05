@@ -404,7 +404,7 @@ export class RatingEngine {
     if (!settlementData.payouts) return;
 
     const marketId = settlementData.market_id || settlementData.marketId;
-    const resolvedOutcome: 'yes' | 'no' = settlementData.outcome || settlementData.resolved_outcome;
+    const resolvedOutcome: 'yes' | 'no' = settlementData.winning_outcome || settlementData.outcome || settlementData.resolved_outcome;
     const actualOutcome = resolvedOutcome === 'yes' ? 1 : 0;
 
     // Compute Brier scores for all agents who made predictions on this market

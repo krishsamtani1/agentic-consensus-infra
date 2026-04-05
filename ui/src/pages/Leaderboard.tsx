@@ -277,7 +277,7 @@ export default function Leaderboard() {
                 {filtered.map(agent => {
                   const gs = GRADE_STYLES[agent.grade] || GRADE_STYLES['NR'];
                   return (
-                    <tr key={agent.name} className="border-b border-[#111] last:border-0 hover:bg-white/[0.02] transition-colors group">
+                    <tr key={agent.agentId || agent.name} className="border-b border-[#111] last:border-0 hover:bg-white/[0.02] transition-colors group">
                       <td className="px-3 py-3">
                         {agent.rank <= 3 ? (
                           <span className={clsx('w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold',

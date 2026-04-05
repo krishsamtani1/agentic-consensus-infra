@@ -574,6 +574,14 @@ export function createPaymentRoutes(escrow: EscrowLedger, eventBus: EventBus) {
       const userId = payload.userId;
       const amount = request.body.amount ?? 10000;
 
+      if (amount <= 0) {
+        return reply.status(400).send({
+          success: false,
+          error: { code: 'INVALID_AMOUNT', message: 'Amount must be greater than zero' },
+          timestamp: new Date().toISOString(),
+        });
+      }
+
       const alreadyCredited = demoCreditTotals.get(userId) || 0;
       if (alreadyCredited >= DEMO_CREDIT_LIMIT) {
         return reply.status(400).send({

@@ -124,11 +124,15 @@ export default function Onboarding() {
 
   const handleFunding = async () => {
     try {
-      const userId = user?.id || 'demo-user';
+      const token = localStorage.getItem('truthnet_token');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token && token !== 'demo-token') {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
       await fetch(`${API_BASE}/v1/payments/demo-credit`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, amount: 10000 }),
+        headers,
+        body: JSON.stringify({ amount: 10000 }),
       });
     } catch { /* continue */ }
     setStep(2);

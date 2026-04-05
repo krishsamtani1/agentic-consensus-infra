@@ -8,6 +8,8 @@ import { PlaceOrderRequestSchema } from '../schemas/index.js';
 import { Order, OrderSide, OrderType, OutcomeToken, OrderStatus } from '../../types.js';
 import { MatchingEngine } from '../../engine/matcher/MatchingEngine.js';
 import { markets } from './markets.js';
+import { seededMarkets } from '../../boot/PlatformSeeder.js';
+import { getLiveNewsMarkets } from './liveNews.js';
 import { getAgentManager } from '../../core/AgentManager.js';
 
 // In-memory order store (production would use PostgreSQL)
@@ -50,8 +52,30 @@ export function createOrderRoutes(engine: MatchingEngine) {
 
       const data = parseResult.data;
 
-      // Verify market exists and is active
-      const market = markets.get(data.market_id);
+      // Verify market exists and is active (check all sources)
+      let market = markets.get(data.market_id);
+      if (!market) {
+        const seeded = seededMarkets.get(data.market_id);
+        if (seeded) {
+          market = {
+            id: seeded.id, title: seeded.title, description: seeded.description || '',
+            ticker: seeded.id.slice(0, 8).toUpperCase(), category: seeded.category,
+            status: 'active' as any, created_at: new Date(seeded.created_at),
+            updated_at: new Date(seeded.created_at),
+            opens_at: new Date(seeded.created_at), closes_at: new Date(seeded.closes_at),
+            resolves_at: new Date(seeded.closes_at),
+            resolution_schema: { type: 'binary' as const },
+            min_order_size: 1, max_position: 10000, fee_rate: 0.001,
+            volume_yes: 0, volume_no: 0, open_interest: 0, tags: [],
+          };
+        }
+      }
+      if (!market) {
+        const live = getLiveNewsMarkets().find(m => m.id === data.market_id);
+        if (live) {
+          market = live as any;
+        }
+      }
       if (!market) {
         return reply.status(404).send({
           success: false,
@@ -274,7 +298,7 @@ export function createOrderRoutes(engine: MatchingEngine) {
       result.sort((a, b) => b.created_at.getTime() - a.created_at.getTime());
 
       // Limit
-      const limitNum = Math.min(parseInt(limit), 100);
+      const limitNum = Math.min(parseInt(limit || '50') || 50, 100);
       result = result.slice(0, limitNum);
 
       return reply.send({
@@ -312,21 +336,32 @@ function formatOrder(order: Order) {
   };
 }
 
-// Helper to extract agent ID from request
-// In production, this would validate the API key
+import jwt from 'jsonwebtoken';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'truthnet-dev-secret-change-in-production';
+
 function extractAgentId(request: FastifyRequest): string | null {
-  // Check for X-Agent-ID header (for development)
   const agentIdHeader = request.headers['x-agent-id'];
   if (agentIdHeader && typeof agentIdHeader === 'string') {
     return agentIdHeader;
   }
 
-  // Check for Authorization header
   const authHeader = request.headers['authorization'];
   if (authHeader && authHeader.startsWith('Bearer ')) {
-    // In production, would validate API key here
-    // For now, accept any bearer token as agent ID
-    return authHeader.slice(7);
+    const token = authHeader.slice(7);
+    try {
+      const payload = jwt.verify(token, JWT_SECRET) as { userId: string };
+      if (payload.userId) {
+        const agentManager = getAgentManager();
+        const agents = agentManager.getAllAgents();
+        const userAgent = agents.find((a: any) => a.id.includes(payload.userId) || a.name?.includes(payload.userId));
+        if (userAgent) return userAgent.id;
+        return payload.userId;
+      }
+    } catch {
+      // Token is not a JWT (could be an API key) — use as-is
+    }
+    return token;
   }
 
   return null;

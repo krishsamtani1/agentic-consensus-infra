@@ -263,14 +263,31 @@ function TradeModal({ market, side, onClose }: { market: Market; side: 'yes' | '
     setResult(null);
     try {
       const agentId = localStorage.getItem('truthnet_agent_id') || 'demo-agent';
-      await apiClient.post('/orders', {
-        market_id: market.id,
-        side: 'buy',
-        outcome: side,
-        order_type: orderType,
-        price: parseFloat(price),
-        quantity: parseInt(quantity),
+      const token = localStorage.getItem('truthnet_token');
+      const API_BASE = import.meta.env.VITE_API_URL || '/api';
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'X-Agent-ID': agentId,
+      };
+      if (token && token !== 'demo-token') {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      const res = await fetch(`${API_BASE}/v1/orders`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          market_id: market.id,
+          side: 'buy',
+          outcome: side,
+          order_type: orderType,
+          price: parseFloat(price),
+          quantity: parseInt(quantity),
+        }),
       });
+      const body = await res.json();
+      if (!res.ok || body.success === false) {
+        throw new Error(body.error?.message || `Order failed (HTTP ${res.status})`);
+      }
       setResult({ success: true, message: 'Order placed successfully!' });
       setTimeout(onClose, 1500);
     } catch (error: any) {

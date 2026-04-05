@@ -53,7 +53,7 @@ export class AgentTradingLoop {
   private tickCount = 0;
   private totalTrades = 0;
   private llmEngine: LLMPricingEngine;
-  private lastReasonings: Map<string, { market: string; reasoning: string; probability: number; model: string; timestamp: Date }[]> = new Map();
+  private lastReasonings: Map<string, { id: string; market_title: string; reasoning: string; probability: number; model: string; timestamp: Date }[]> = new Map();
   private agentTradeStats: Map<string, AgentTradeStats> = new Map();
 
   constructor(
@@ -165,7 +165,8 @@ export class AgentTradingLoop {
       // Record reasoning for transparency
       const agentReasonings = this.lastReasonings.get(agent.id) || [];
       agentReasonings.push({
-        market: market.title,
+        id: `${agent.id}-${Date.now()}`,
+        market_title: market.title,
         reasoning: pricing.reasoning,
         probability: pricing.probability,
         model: pricing.model,

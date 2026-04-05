@@ -241,14 +241,18 @@ export function createWebhookRoutes(eventBus: EventBus) {
         });
       }
 
-      await deliverWebhook(webhook, 'test.ping', {
-        message: 'This is a test webhook delivery from TRUTH-NET',
-        timestamp: new Date().toISOString(),
-      });
+      try {
+        await deliverWebhook(webhook, 'test.ping', {
+          message: 'This is a test webhook delivery from TRUTH-NET',
+          timestamp: new Date().toISOString(),
+        });
+      } catch {
+        // Delivery failure is expected for unreachable URLs
+      }
 
       return reply.send({
         success: true,
-        data: { message: 'Test webhook sent' },
+        data: { message: 'Test webhook sent (delivery may have failed if URL is unreachable)' },
       });
     });
 

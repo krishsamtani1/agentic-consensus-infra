@@ -75,10 +75,6 @@ const PLANS = [
   },
 ];
 
-const MOCK_HISTORY: BenchmarkRun[] = [
-  { id: 'br-1', agentName: 'My GPT-4 Agent', status: 'completed', progress: 100, depth: 'standard', startedAt: '2026-02-10', results: { brierScore: 0.18, accuracy: 72.1, suggestedGrade: 'A', truthScore: 76.2, avgResponseTime: 1200, totalMarkets: 50 } },
-  { id: 'br-2', agentName: 'Claude Trading Bot', status: 'completed', progress: 100, depth: 'quick', startedAt: '2026-02-08', results: { brierScore: 0.12, accuracy: 81.3, suggestedGrade: 'AA', truthScore: 84.7, avgResponseTime: 890, totalMarkets: 10 } },
-];
 
 const CATEGORIES = [
   { id: 'tech', label: 'Tech & AI', icon: Code },
@@ -147,18 +143,29 @@ function SubmitForm({ plan, onBack, onSubmit }: { plan: string; onBack: () => vo
     setSubmitting(true);
     setSubmitError(null);
     try {
+      const userId = localStorage.getItem('truthnet_user') 
+        ? JSON.parse(localStorage.getItem('truthnet_user')!).id 
+        : 'demo-user';
+      const token = localStorage.getItem('truthnet_token');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token && token !== 'demo-token') {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
       const res = await fetch(`${API_BASE}/v1/benchmark/submit`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('truthnet_token')}` },
-        body: JSON.stringify({ agentName, endpoint, protocol, categories: selectedCategories, depth: plan }),
+        headers,
+        body: JSON.stringify({
+          userId,
+          agentName,
+          agentEndpoint: endpoint,
+          protocol,
+          categories: selectedCategories,
+          depth: plan,
+        }),
       });
-      if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        throw new Error(body?.error || `Submission failed (HTTP ${res.status})`);
-      }
       const body = await res.json().catch(() => null);
-      if (body && body.success === false) {
-        throw new Error(body.error || 'Submission was rejected by the server');
+      if (!res.ok || (body && body.success === false)) {
+        throw new Error(body?.error?.message || body?.error || `Submission failed (HTTP ${res.status})`);
       }
       onSubmit();
     } catch (e: any) {
@@ -264,6 +271,34 @@ function SubmitForm({ plan, onBack, onSubmit }: { plan: string; onBack: () => vo
 }
 
 function BenchmarkHistory() {
+  const API_BASE = import.meta.env.VITE_API_URL || '/api';
+  const [history, setHistory] = useState<BenchmarkRun[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useState(() => {
+    (async () => {
+      try {
+        const userId = localStorage.getItem('truthnet_user')
+          ? JSON.parse(localStorage.getItem('truthnet_user')!).id
+          : 'demo-user';
+        const res = await fetch(`${API_BASE}/v1/benchmark/history/${userId}`);
+        const body = await res.json();
+        if (body.success && body.data?.benchmarks) {
+          setHistory(body.data.benchmarks.map((b: any) => ({
+            id: b.id,
+            agentName: b.agentName,
+            status: b.status,
+            progress: b.progress,
+            depth: b.depth,
+            startedAt: b.startedAt ? new Date(b.startedAt).toLocaleDateString() : undefined,
+            results: b.results,
+          })));
+        }
+      } catch { /* no history yet */ }
+      setLoading(false);
+    })();
+  });
+
   const gradeColor = (g: string) => {
     if (g === 'AAA') return 'text-emerald-400';
     if (g === 'AA') return 'text-cyan-400';
@@ -272,6 +307,25 @@ function BenchmarkHistory() {
     return 'text-gray-400';
   };
 
+  if (loading) {
+    return (
+      <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl p-8 text-center">
+        <Activity className="w-5 h-5 text-cyan-400 mx-auto animate-spin mb-2" />
+        <p className="text-xs text-gray-500">Loading history...</p>
+      </div>
+    );
+  }
+
+  if (history.length === 0) {
+    return (
+      <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl p-8 text-center">
+        <FileText className="w-6 h-6 text-gray-700 mx-auto mb-2" />
+        <p className="text-sm text-gray-500">No benchmarks yet</p>
+        <p className="text-xs text-gray-600 mt-1">Submit your first agent above to get started</p>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl overflow-hidden">
       <div className="p-4 border-b border-[#1a1a1a] flex items-center gap-2">
@@ -279,13 +333,18 @@ function BenchmarkHistory() {
         <span className="text-sm font-semibold text-white">Previous Benchmarks</span>
       </div>
       <div className="divide-y divide-[#111]">
-        {MOCK_HISTORY.map(run => (
+        {history.map(run => (
           <div key={run.id} className="p-4 hover:bg-white/[0.02] transition-colors">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-3">
                 <Bot className="w-4 h-4 text-cyan-400" />
                 <span className="text-sm text-white font-medium">{run.agentName}</span>
-                <span className="text-[10px] px-2 py-0.5 bg-emerald-500/20 text-emerald-400 rounded-full">
+                <span className={clsx('text-[10px] px-2 py-0.5 rounded-full',
+                  run.status === 'completed' ? 'bg-emerald-500/20 text-emerald-400' :
+                  run.status === 'running' ? 'bg-cyan-500/20 text-cyan-400' :
+                  run.status === 'failed' ? 'bg-red-500/20 text-red-400' :
+                  'bg-amber-500/20 text-amber-400'
+                )}>
                   {run.status}
                 </span>
               </div>

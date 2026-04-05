@@ -238,7 +238,7 @@ export interface HealthStatus {
 export const healthAPI = {
   check: () => {
     const url = `${API_BASE}/health`;
-    return fetch(url).then(r => r.json()).then(d => d.data as HealthStatus);
+    return fetch(url).then(r => r.json()).then(d => d as HealthStatus);
   },
 };
 

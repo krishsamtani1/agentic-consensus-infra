@@ -55,12 +55,7 @@ interface NotificationContextType {
 const NotificationContext = createContext<NotificationContextType | null>(null);
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
-  const [notifications, setNotifications] = useState<Notification[]>(() => [
-    { id: 'n1', type: 'rating', title: 'Grade Upgrade', message: 'TRUTH-NET Oracle upgraded from AA to AAA', timestamp: new Date(Date.now() - 300000), read: false, actionUrl: '/leaderboard', actionLabel: 'View' },
-    { id: 'n2', type: 'success', title: 'Agent Certified', message: 'Tech Oracle has been certified with AA grade', timestamp: new Date(Date.now() - 3600000), read: false },
-    { id: 'n3', type: 'info', title: 'Market Resolved', message: '"AWS Outage Q1" resolved as NO', timestamp: new Date(Date.now() - 7200000), read: true },
-    { id: 'n4', type: 'warning', title: 'API Usage Alert', message: 'You have used 80% of your daily API limit', timestamp: new Date(Date.now() - 86400000), read: true },
-  ]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const unreadCount = notifications.filter(n => !n.read).length;

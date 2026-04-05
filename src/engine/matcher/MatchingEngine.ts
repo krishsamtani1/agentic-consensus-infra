@@ -203,19 +203,17 @@ export class MatchingEngine {
         const order = book.getOrder(orderId);
 
         if (order && order.agent_id === agentId) {
-          // Remove from book
           book.removeOrder(orderId);
 
-          // Release locked funds
-          await this.escrow.release(agentId, order.locked_amount, 'order', orderId);
+          try {
+            await this.escrow.release(agentId, order.locked_amount, 'order', orderId);
+          } catch {
+            // Wallet may not exist or funds already released
+          }
 
-          // Update status
           order.status = OrderStatus.CANCELLED;
           order.updated_at = new Date();
-
-          // Emit cancellation event
           await this.eventBus.publish('orders.cancelled', { order });
-
           return order;
         }
       }

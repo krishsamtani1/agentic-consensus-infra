@@ -128,13 +128,17 @@ function downloadAgentReport(agentId: string, agentName: string, grade: string, 
   URL.revokeObjectURL(url);
 }
 
-function buildDomainBreakdown(totalTrades: number, brierScore: number) {
+function buildDomainBreakdown(totalTrades: number, brierScore: number, agentId = '') {
   const weights = [0.30, 0.22, 0.18, 0.14, 0.10, 0.06];
   let remaining = totalTrades;
+  let seed = 0;
+  for (let i = 0; i < agentId.length; i++) seed = (seed * 31 + agentId.charCodeAt(i)) & 0x7fffffff;
   return DOMAIN_CATEGORIES.map((domain, i) => {
     const count = i === weights.length - 1 ? remaining : Math.round(totalTrades * weights[i]);
     remaining -= count;
-    const domainBrier = Math.max(0.02, brierScore + (Math.random() - 0.5) * 0.08);
+    seed = (seed * 16807 + 1) & 0x7fffffff;
+    const offset = ((seed / 0x7fffffff) - 0.5) * 0.08;
+    const domainBrier = Math.max(0.02, brierScore + offset);
     const grade = domainBrier <= 0.10 ? 'AAA' : domainBrier <= 0.15 ? 'AA' : domainBrier <= 0.20 ? 'A' : domainBrier <= 0.25 ? 'BBB' : 'BB';
     return { domain, brier: domainBrier, predictions: Math.max(0, count), grade };
   });
@@ -275,7 +279,7 @@ export default function AgentProfile() {
         score: h.score,
       }))
     : generateSimulatedHistory(truthScore);
-  const domainScores = buildDomainBreakdown(totalTrades, brierScore);
+  const domainScores = buildDomainBreakdown(totalTrades, brierScore, agentId);
 
   const defaultRating: RatingDetail = {
     agent_id: agentId,

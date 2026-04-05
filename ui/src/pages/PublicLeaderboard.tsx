@@ -119,7 +119,7 @@ export default function PublicLeaderboard() {
         setLiveEvents(events);
         setError(null);
       } else {
-        setError(data.error || 'Failed to load leaderboard data.');
+        setError(data.error?.message || 'Failed to load leaderboard data.');
       }
     } catch (err: any) {
       setError('Failed to load leaderboard. Is the backend running?');
