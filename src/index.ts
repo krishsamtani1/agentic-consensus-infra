@@ -389,7 +389,7 @@ async function start() {
 
     fastify.get('/v1/reasoning/:agentId', async (request: any) => ({
       success: true,
-      data: seedResult.tradingLoop.getReasonings(request.params.agentId),
+      data: { entries: seedResult.tradingLoop.getReasonings(request.params.agentId) },
       timestamp: new Date().toISOString(),
     }));
 

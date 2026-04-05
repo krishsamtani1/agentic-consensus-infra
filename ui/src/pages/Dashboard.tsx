@@ -75,6 +75,64 @@ function GettingStarted() {
 // TOP RATED AGENTS (live from API)
 // ============================================================================
 
+function YourAgents() {
+  const navigate = useNavigate();
+  const { data, isLoading } = useQuery({
+    queryKey: ['user-agents'],
+    queryFn: () => apiClient.get<{ agents: any[]; total: number }>('/agents'),
+    staleTime: 10_000,
+    refetchInterval: 10_000,
+  });
+
+  const hasRegistered = localStorage.getItem('tn_agent_registered') === 'true';
+  const userAgents = (data?.agents || []).filter((a: any) => a.id?.startsWith('agent-') && !a.id?.startsWith('agent-gpt') && !a.id?.startsWith('agent-claude') && !a.id?.startsWith('agent-gemini') && !a.id?.startsWith('agent-mm') && !a.id?.startsWith('agent-momentum') && !a.id?.startsWith('agent-contrarian') && !a.id?.startsWith('agent-climate') && !a.id?.startsWith('agent-macro') && !a.id?.startsWith('agent-random'));
+
+  if (!hasRegistered && userAgents.length === 0) return null;
+
+  return (
+    <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg overflow-hidden">
+      <div className="p-3 border-b border-[#111] flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Bot className="w-3.5 h-3.5 text-cyan-400" />
+          <span className="text-sm font-medium text-white">Your Agents</span>
+          <span className="text-[10px] text-gray-600 bg-[#111] px-1.5 py-0.5 rounded">{userAgents.length}</span>
+        </div>
+        <Link to="/agents" className="text-[10px] text-cyan-400 hover:text-cyan-300 flex items-center gap-0.5">
+          Manage <ArrowRight className="w-3 h-3" />
+        </Link>
+      </div>
+      {isLoading ? (
+        <div className="p-3 text-center text-gray-600 text-xs">Loading...</div>
+      ) : userAgents.length === 0 ? (
+        <div className="p-4 text-center">
+          <p className="text-xs text-gray-500 mb-2">No agents deployed yet</p>
+          <button onClick={() => navigate('/marketplace')}
+            className="text-[10px] px-3 py-1 bg-cyan-600/20 border border-cyan-500/30 text-cyan-400 rounded-lg hover:bg-cyan-600/30">
+            Hire from Marketplace
+          </button>
+        </div>
+      ) : (
+        <div className="divide-y divide-[#111]">
+          {userAgents.slice(0, 5).map((agent: any) => (
+            <button key={agent.id} onClick={() => navigate(`/agents/${agent.id}`)}
+              className="w-full p-2.5 hover:bg-white/[0.02] transition-colors flex items-center gap-3 text-left">
+              <span className={clsx('w-2 h-2 rounded-full flex-shrink-0', agent.status === 'active' ? 'bg-emerald-400' : 'bg-gray-600')} />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-white font-medium truncate">{agent.name}</p>
+                <span className="text-[9px] text-gray-600">{agent.status} &middot; {agent.metrics?.total_trades || agent.total_trades || 0} trades</span>
+              </div>
+              <div className="text-right">
+                <span className="text-xs font-mono text-white">{agent.metrics?.truth_score || agent.truth_score || 50}</span>
+                <p className="text-[9px] text-gray-600">Score</p>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TopAgents() {
   const navigate = useNavigate();
 
@@ -498,6 +556,7 @@ export default function Dashboard() {
 
         {/* Right Column */}
         <div className="col-span-4 space-y-4">
+          <YourAgents />
           <TopAgents />
           <TrendingMarkets />
 

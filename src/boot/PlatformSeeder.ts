@@ -19,7 +19,7 @@ import { MatchingEngine } from '../engine/matcher/MatchingEngine.js';
 import { EscrowLedger } from '../engine/escrow/EscrowLedger.js';
 import { EventBus } from '../events/EventBus.js';
 import { SettlementService } from '../settlement/SettlementService.js';
-import { AgentTradingLoop, TradingAgent } from '../agents/AgentTradingLoop.js';
+import { AgentTradingLoop, TradingAgent, AgentStrategy } from '../agents/AgentTradingLoop.js';
 import { getRatingEngine } from '../rating/RatingEngine.js';
 import { LLMProvider } from '../agents/LLMPricingEngine.js';
 
@@ -398,6 +398,59 @@ function scheduleMarketRegeneration(category: string): void {
 // SEEDER
 // ============================================================================
 
+const METHODOLOGY_DESCRIPTIONS: Record<string, string> = {
+  bayesian: 'Bayesian Updating — start from base rates and update incrementally with each new piece of evidence. Weight evidence by reliability and recency.',
+  trend_analysis: 'Trend/Momentum Analysis — identify persistent directional moves driven by information flow. Follow trends until evidence of reversal emerges.',
+  contrarian_analysis: 'Contrarian Analysis — systematically identify when markets have overshot due to herding, anchoring, or recency bias. Fade extremes.',
+  ensemble: 'Ensemble Methods — combine multiple analytical frameworks (statistical, fundamental, sentiment) and weight by historical accuracy per domain.',
+  expert_consensus: 'Expert Consensus — aggregate views from domain experts, weight by track record, and identify where expert consensus diverges from market price.',
+};
+
+const SOURCE_DESCRIPTIONS: Record<string, string> = {
+  news: 'Real-time news feeds and breaking developments',
+  filings: 'Financial filings, regulatory documents, and corporate disclosures',
+  academic: 'Peer-reviewed research, preprints, and academic publications',
+  social_sentiment: 'Social media sentiment analysis and attention dynamics',
+  blockchain: 'On-chain data, DeFi metrics, and crypto market structure',
+  government: 'Government statistics, policy announcements, and regulatory actions',
+  weather: 'NOAA/ECMWF meteorological data and climate models',
+  satellite: 'Satellite imagery, supply chain tracking, and geospatial signals',
+};
+
+function buildUserAgentPrompt(name: string, persona: string, config: any): string {
+  const methodology = config.methodology || 'bayesian';
+  const sources: string[] = config.data_sources || ['news'];
+  const riskTol = parseFloat(config.risk_tolerance) || 0.35;
+
+  const methodDesc = METHODOLOGY_DESCRIPTIONS[methodology] || METHODOLOGY_DESCRIPTIONS.bayesian;
+  const sourceList = sources.map(s => `- ${SOURCE_DESCRIPTIONS[s] || s}`).join('\n');
+
+  const riskProfile = riskTol < 0.25 ? 'conservative — prioritize capital preservation over returns'
+    : riskTol < 0.45 ? 'moderate — balanced approach to risk and return'
+    : riskTol < 0.65 ? 'aggressive — accept higher drawdowns for higher expected returns'
+    : 'very aggressive — maximum position sizing, high conviction bets only';
+
+  return `You are ${name}, a deployed prediction market agent. Your performance is publicly rated and ranked. Every trade you make is audited.
+
+ANALYTICAL METHODOLOGY: ${methodDesc}
+
+DATA SOURCES YOU MONITOR:
+${sourceList}
+
+RISK PROFILE: ${riskProfile} (tolerance: ${riskTol})
+
+STRATEGY: ${persona}
+
+OPERATING RULES:
+1. Your probability estimates must be INDEPENDENT of the current market price. Anchor to your analysis, not the crowd.
+2. Only trade when your estimate diverges from market price by more than ${Math.round(riskTol * 20)}% — otherwise pass.
+3. Size positions proportional to conviction: high confidence (>0.7) = full size, moderate (0.5-0.7) = half size, low (<0.5) = quarter size.
+4. Your Brier score is tracked. Overconfidence destroys your rating. Calibrate carefully.
+5. When you lack domain expertise for a market, your confidence should be LOW (<0.4) and your probability should stay close to the market price.
+
+Your rating is public. Institutions use it to decide whether to trust you. Perform accordingly.`;
+}
+
 export async function seedPlatform(
   matchingEngine: MatchingEngine,
   escrow: EscrowLedger,
@@ -524,22 +577,34 @@ export async function seedPlatform(
     const agent = data.agent || data;
     if (!agent?.id || tradingLoop.hasAgent(agent.id)) return;
 
+    const cfg = agent.config || {};
+    const persona = agent.strategy_persona || cfg.strategy_persona || 'informed';
+
+    const strategyMap: Record<string, AgentStrategy> = {
+      informed: 'informed', momentum: 'momentum', contrarian: 'contrarian',
+      market_maker: 'market_maker', random: 'random',
+    };
+    const strategy: AgentStrategy = strategyMap[persona] || 'informed';
+
+    const systemPrompt = buildUserAgentPrompt(agent.name, persona, cfg);
+
     const newTradingAgent: TradingAgent = {
       id: agent.id,
       name: agent.name || agent.id,
-      strategy: 'informed',
+      strategy,
       domains: agent.trading_config?.allowed_topics || [],
-      riskTolerance: 0.35,
+      riskTolerance: parseFloat(cfg.risk_tolerance) || 0.35,
       accuracy: 0.6,
       maxPositionSize: Math.min(200, Math.round((agent.staked_budget || 100000) / 500)),
       active: true,
       provider: 'local',
-      model: 'heuristic-user',
+      model: `user-${persona}`,
+      systemPrompt,
     };
 
     tradingLoop.registerAgent(newTradingAgent);
     ratingEngine.initializeRating(agent.id);
-    console.log(`[Seeder] Auto-registered user-created agent: ${agent.name} (${agent.id})`);
+    console.log(`[Seeder] Registered user agent: ${agent.name} (${agent.id}) strategy=${strategy} prompt=${systemPrompt.length}chars`);
   });
 
   console.log('[Seeder] ═══════════════════════════════════════════════');

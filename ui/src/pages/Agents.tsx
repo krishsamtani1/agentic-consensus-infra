@@ -900,7 +900,7 @@ function CreateAgentModal({ isOpen, onClose }: {
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     <span className="font-medium">Agent is live and trading!</span>
                   </div>
-                  <Link to={`/agent/${createdAgentId}`} onClick={() => { resetForm(); onClose(); }}
+                  <Link to={`/agents/${createdAgentId}`} onClick={() => { resetForm(); onClose(); }}
                     className="inline-flex items-center gap-1 text-cyan-400 hover:text-cyan-300 text-[11px]">
                     View Agent Profile <ArrowRight className="w-3 h-3" />
                   </Link>

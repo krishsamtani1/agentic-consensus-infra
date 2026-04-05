@@ -7,17 +7,17 @@
  */
 
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Store, Search, Shield, TrendingUp,
   Zap, Bot,
   ArrowRight, DollarSign, Clock, Award, Eye,
-  Sparkles
+  Sparkles, X, CheckCircle, AlertCircle, Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 import { Link, useNavigate } from 'react-router-dom';
-import { ratingsAPI } from '../api/client';
+import { ratingsAPI, apiClient } from '../api/client';
 import { getAgentMeta } from '../lib/agentMeta';
 
 // ============================================================================
@@ -66,8 +66,7 @@ interface MarketplaceAgent {
 // AGENT CARD
 // ============================================================================
 
-function AgentCard({ agent }: { agent: MarketplaceAgent }) {
-  const navigate = useNavigate();
+function AgentCard({ agent, onHire }: { agent: MarketplaceAgent; onHire: (a: MarketplaceAgent) => void }) {
   const gs = GRADE_STYLES[agent.grade] || GRADE_STYLES['BBB'];
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
@@ -130,13 +129,199 @@ function AgentCard({ agent }: { agent: MarketplaceAgent }) {
             className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-[#111] border border-[#262626] hover:border-cyan-500/30 text-white text-xs font-medium rounded-lg transition-colors">
             <Eye className="w-3 h-3" /> View Profile
           </Link>
-          <button onClick={() => navigate(`/agents/${agent.id}`)}
+          <button onClick={() => onHire(agent)}
             className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-bold rounded-lg transition-all shadow-sm">
             <Zap className="w-3 h-3" /> Hire Agent
           </button>
         </div>
       </div>
     </motion.div>
+  );
+}
+
+// ============================================================================
+// HIRE MODAL
+// ============================================================================
+
+const HIRE_METHODOLOGIES = [
+  { id: 'bayesian', label: 'Bayesian Updating', desc: 'Incremental evidence weighting from base rates' },
+  { id: 'trend_analysis', label: 'Trend / Momentum', desc: 'Follow persistent directional moves' },
+  { id: 'contrarian_analysis', label: 'Contrarian', desc: 'Fade extremes, exploit herding bias' },
+  { id: 'ensemble', label: 'Ensemble Methods', desc: 'Combine multiple frameworks, weight by accuracy' },
+  { id: 'expert_consensus', label: 'Expert Consensus', desc: 'Aggregate domain expert views' },
+];
+
+const HIRE_SOURCES = [
+  { id: 'news', label: 'News & Headlines' },
+  { id: 'filings', label: 'Financial Filings' },
+  { id: 'academic', label: 'Academic Research' },
+  { id: 'social_sentiment', label: 'Social Sentiment' },
+  { id: 'blockchain', label: 'Blockchain / On-Chain' },
+  { id: 'government', label: 'Government Data' },
+  { id: 'weather', label: 'Weather / Climate' },
+  { id: 'satellite', label: 'Satellite / Geospatial' },
+];
+
+function HireModal({ agent, onClose }: { agent: MarketplaceAgent; onClose: () => void }) {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const meta = getAgentMeta(agent.id);
+  const [step, setStep] = useState<'configure' | 'deploying' | 'success'>('configure');
+  const [agentName, setAgentName] = useState(`My ${meta.name}`);
+  const [methodology, setMethodology] = useState('bayesian');
+  const [sources, setSources] = useState<string[]>(['news']);
+  const [riskTolerance, setRiskTolerance] = useState(35);
+  const [budget, setBudget] = useState(5000);
+  const [error, setError] = useState<string | null>(null);
+  const [createdId, setCreatedId] = useState<string | null>(null);
+
+  const toggleSource = (id: string) => setSources(p => p.includes(id) ? p.filter(s => s !== id) : [...p, id]);
+
+  const handleDeploy = async () => {
+    if (!agentName.trim() || sources.length === 0) { setError('Name and at least one data source required'); return; }
+    setStep('deploying'); setError(null);
+    try {
+      const body = {
+        name: agentName.trim(),
+        strategy_persona: meta.persona || 'informed',
+        staked_budget: budget,
+        description: `Hired from marketplace. Based on ${meta.name}. Methodology: ${methodology}. Sources: ${sources.join(', ')}.`,
+        config: {
+          data_sources: sources,
+          methodology,
+          risk_tolerance: (riskTolerance / 100).toFixed(2),
+          max_position_pct: 25,
+          max_exposure_pct: 80,
+        },
+      };
+      const result = await apiClient.post<{ id: string }>('/agents', body);
+      setCreatedId(result.id);
+      localStorage.setItem('tn_agent_registered', 'true');
+      queryClient.invalidateQueries({ queryKey: ['agents-list'] });
+      setStep('success');
+    } catch (e: any) {
+      setError(e.message || 'Failed to deploy agent');
+      setStep('configure');
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+        className="bg-[#0a0a0a] rounded-xl border border-[#1a1a1a] p-6 w-full max-w-xl max-h-[90vh] overflow-y-auto"
+        onClick={e => e.stopPropagation()}>
+
+        {step === 'success' ? (
+          <div className="text-center py-8">
+            <CheckCircle className="w-12 h-12 text-emerald-400 mx-auto mb-4" />
+            <h2 className="text-xl font-bold text-white mb-2">Agent Deployed</h2>
+            <p className="text-sm text-gray-400 mb-1">{agentName} is now live and trading.</p>
+            <p className="text-xs text-gray-600 mb-6">It will appear on the leaderboard after its first trades are rated.</p>
+            <div className="flex gap-3 justify-center">
+              <button onClick={onClose} className="px-4 py-2 bg-[#111] border border-[#262626] text-gray-400 text-sm rounded-lg">Close</button>
+              <button onClick={() => { onClose(); navigate(`/agents/${createdId}`); }}
+                className="px-4 py-2 bg-cyan-600 text-white text-sm font-medium rounded-lg">
+                View Agent
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">{meta.avatar}</span>
+                <div>
+                  <h2 className="text-lg font-bold text-white">Hire {meta.name}</h2>
+                  <p className="text-xs text-gray-500">{meta.domain} &middot; TruthScore: {agent.truthScore}</p>
+                </div>
+              </div>
+              <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-lg"><X className="w-5 h-5 text-gray-400" /></button>
+            </div>
+
+            <div className="space-y-5">
+              {/* Name */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Agent Name</label>
+                <input value={agentName} onChange={e => setAgentName(e.target.value)}
+                  className="w-full bg-black border border-[#262626] rounded-lg py-2.5 px-3 text-white text-sm focus:border-cyan-500 focus:outline-none" />
+              </div>
+
+              {/* Methodology */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Analytical Methodology</label>
+                <div className="grid grid-cols-1 gap-2">
+                  {HIRE_METHODOLOGIES.map(m => (
+                    <button key={m.id} onClick={() => setMethodology(m.id)}
+                      className={clsx('text-left px-3 py-2.5 rounded-lg border transition-colors',
+                        methodology === m.id ? 'bg-cyan-600/10 border-cyan-500/40 text-white' : 'bg-black border-[#1a1a1a] text-gray-400 hover:border-gray-600')}>
+                      <span className="text-sm font-medium">{m.label}</span>
+                      <span className="text-[10px] text-gray-500 ml-2">{m.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Data Sources */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Data Sources</label>
+                <div className="flex flex-wrap gap-2">
+                  {HIRE_SOURCES.map(s => (
+                    <button key={s.id} onClick={() => toggleSource(s.id)}
+                      className={clsx('px-3 py-1.5 rounded-lg text-xs border transition-colors',
+                        sources.includes(s.id) ? 'bg-cyan-600/20 border-cyan-500/40 text-cyan-400' : 'bg-black border-[#1a1a1a] text-gray-500 hover:border-gray-600')}>
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Risk + Budget */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Risk Tolerance</label>
+                  <input type="range" min={10} max={90} value={riskTolerance} onChange={e => setRiskTolerance(Number(e.target.value))}
+                    className="w-full accent-cyan-500" />
+                  <div className="flex justify-between text-[10px] text-gray-600 mt-1">
+                    <span>Conservative</span>
+                    <span className="text-cyan-400 font-mono">{riskTolerance}%</span>
+                    <span>Aggressive</span>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Staking Budget</label>
+                  <select value={budget} onChange={e => setBudget(Number(e.target.value))}
+                    className="w-full bg-black border border-[#262626] rounded-lg py-2.5 px-3 text-white text-sm focus:border-cyan-500 focus:outline-none">
+                    {[1000, 2500, 5000, 10000, 25000, 50000].map(v => (
+                      <option key={v} value={v}>${v.toLocaleString()}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {error && (
+                <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+                  <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
+                  <p className="text-xs text-red-400">{error}</p>
+                </div>
+              )}
+
+              <button onClick={handleDeploy} disabled={step === 'deploying'}
+                className="w-full py-3 rounded-lg font-bold bg-gradient-to-r from-cyan-600 to-blue-600 text-white hover:from-cyan-500 hover:to-blue-500 disabled:opacity-50 transition-all">
+                {step === 'deploying' ? (
+                  <span className="flex items-center justify-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Deploying...</span>
+                ) : (
+                  <span className="flex items-center justify-center gap-2"><Zap className="w-4 h-4" /> Deploy Agent &middot; ${budget.toLocaleString()} stake</span>
+                )}
+              </button>
+
+              <p className="text-[10px] text-gray-600 text-center">
+                Staked budget is used for trading. Your agent's P&L and ratings are public.
+              </p>
+            </div>
+          </>
+        )}
+      </motion.div>
+    </div>
   );
 }
 
@@ -149,6 +334,7 @@ export default function Marketplace() {
   const [category, setCategory] = useState('all');
   const [certifiedOnly, setCertifiedOnly] = useState(false);
   const [sortBy, setSortBy] = useState<'featured' | 'score' | 'price' | 'accuracy'>('featured');
+  const [hireAgent, setHireAgent] = useState<MarketplaceAgent | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['marketplace-agents'],
@@ -289,7 +475,7 @@ export default function Marketplace() {
         </div>
       ) : (
         <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5">
-          {filtered.map(agent => <AgentCard key={agent.id} agent={agent} />)}
+          {filtered.map(agent => <AgentCard key={agent.id} agent={agent} onHire={setHireAgent} />)}
         </div>
       )}
 
@@ -304,6 +490,10 @@ export default function Marketplace() {
           Apply for Listing <ArrowRight className="w-4 h-4" />
         </Link>
       </div>
+
+      <AnimatePresence>
+        {hireAgent && <HireModal agent={hireAgent} onClose={() => setHireAgent(null)} />}
+      </AnimatePresence>
     </div>
   );
 }
